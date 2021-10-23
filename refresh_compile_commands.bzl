@@ -5,7 +5,7 @@ When `bazel run`, these rules refresh the compile_commands.json in the root of y
 
 Best explained by concrete example--copy the following and follow the comments:
 ```
-load("@//Bazel/CompileCommands:refresh_compile_commands.bzl", "refresh_compile_commands")
+load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
 refresh_compile_commands(
     name = "refresh_compile_commands",

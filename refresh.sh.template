@@ -32,7 +32,7 @@ get_commands() {
         bazel aquery "mnemonic('(Objc|Cpp)Compile',deps($1))" \
         --ui_event_filters=-info --noshow_progress \
         --output=jsonproto "${@:2}" \
-        | bazel run //Bazel/CompileCommands:extract \
+        | bazel run @hedron_compile_commands//:extract \
             --ui_event_filters=-info --noshow_progress # Shush logging. Just for readability.
     } 2>&1 >> compile_commands.json | sed -e '
 # Further hide Bazel build details.
