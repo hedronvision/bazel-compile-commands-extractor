@@ -1,1 +1,10 @@
+# macOS
 .DS_Store
+
+# Bazel
+# Ignore build output symlinks
+/bazel-*
+
+# Clangd
+/compile_commands.json
+/.cache
