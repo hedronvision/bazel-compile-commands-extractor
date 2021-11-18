@@ -1,16 +1,34 @@
-# Bazel/CompileCommands — Implementation
+# Hedron's Compile Commands Extractor for Bazel — Implementation
 
-Hello, Friendly Face reading this :)
+Hello, and thanks for your interest in the codebase :)
 
-**Goal:** *If you need to work under the hood of of (Objective-)C(++) tooling, let's get you oriented efficiently.*
+**Goal:** *If you need to work under the hood, let's get you oriented efficiently.*
 
 **Interface:** *Flattened information tree. Hop around to find what you need.*
 
+## Setting Up Local Development
+
+We'd recommend setting up for rapid iteration as follows:
+
+Get a local copy. (e.g. `git clone git@github.com:hedronvision/bazel-compile-commands-extractor.git`)
+
+Then point your main repo (from which you're seeing issues) to use your local development copy of the compile commands. To do that, open `WORKSPACE`, and swap out the http_archive loading `hedron_compile_commands` with the following.
+
+```
+local_repository(
+    name = "hedron_compile_commands",
+    path = "../bazel-compile-commands", # Or wherever you put it.
+)
+```
+
+You should then be able to make local changes and see their effects immediately.
+
 ## Overall Strategy
 
-To get great autocomplete and enable other tooling, we need to get Bazel's understanding of how to compile the code into the compile_commands.json common format that clangd--and other good tooling understands.
+To get great autocomplete and enable other tooling, we need to get Bazel's understanding of how to compile the code into the compile_commands.json common format that clangd—and other good clang tooling—understands.
 
-[Refresh.sh](./Refresh.sh) drives the process:
+The refresh_compile_commands rule (from [refresh_compile_commands.bzl](./refresh_compile_commands.bzl)) drives the process. It constructs a refresh.sh script to be run for the targets you've chosen. That script drives the following actions.
+
 1. We ask Bazel which compile commands it plans to issue during build actions using [aquery ("action query")](https://docs.bazel.build/versions/master/aquery.html).
 2. We then reformat each of those into compile_commands.json entries clangd understands with [extract.py](./extract.py).
 3. Clangd then works with VSCode to provide a nice editing experience.
@@ -18,21 +36,22 @@ To get great autocomplete and enable other tooling, we need to get Bazel's under
 
 ## Code Layout
 
-[Refresh.sh](./Refresh.sh) is the user interface of this module and drives everything (as you should know from the interface [README.md](./README.md)). Browsing it should help you figure out where you want to go pretty fast.
+[refresh.sh.template](./refresh.sh.template) is the main driver of actions. Browsing it should help you figure out where you want to go.
 
 But, if you're looking to jump more directly:
-- [extract.py](./extract.py) does the actual reformatting of command so they're usable by clangd. This is much more involved than you might think.
-  - If you're seeing failures on a new platform, weird entries in compile_commands, or wrapped compilers, this is where you should make changes to properly undo Bazel's wrapping of the command.
+- [extract.py](./extract.py) does the actual reformatting of command so they're usable by clangd. This is more involved than you might think, but not crazy. It's easy to extend the reformatting operations applied.
+  - If you're seeing failures on a new platform, weird entries in compile_commands, or wrapped compilers, this is where you should make changes to properly undo Bazel's wrapping of the command. See the "Patch command by platform" section.
+- The bazel files ([refresh_compile_commands.bzl](./refresh_compile_commands.bzl) and others) are just wrappings. They're less likely to require your attention.
 
 
-## Tool Choice -- Why clangd?
+## Tool Choice — Why clangd?
 
 [Clangd](https://clangd.llvm.org) was the clear choice for the language server for autocomplete and editing help.
 
 Why?
 
 - LLVM projects are well-built, best-poised to understand languages, and well-backed.
-  - You want tooling that understands the language. Compiler frontends understand languages best. Tooling that builds on the best compiler frontend--and is written by the same folks--is likely to be best.
+  - You want tooling that understands the language. Compiler frontends understand languages best. Tooling that builds on the best compiler frontend—and is written by the same folks—is likely to be best.
   - The community is great: clangd is very responsive on GitHub, it's integrated in many editors (including VSCode), and there are many deep pockets that need it and fund it.
 - The alternatives have key drawbacks:
   - The Microsoft VSCode plugin for C++ doesn't support Objective-C (which we need), would more tightly couple us to VSCode with a non-standard compile commands format, doesn't seem to be based on a compiler, and has had various issues parsing platform command flags.
@@ -51,7 +70,7 @@ Clangd (and most of these tools), use compile_commands.json ([spec](https://clan
 
 ### How clangd uses compile_commands.json
 
-It's worth knowing that clangd doesn't actually execute the command, but rather swaps in its own command as the first token and then listens to the flags provided. (You might also have guessed instead, as I did, that clangd invoked the compiler as a dry-run and listened, but that's wrong.)
+It's worth knowing that clangd doesn't actually execute the command, but rather swaps in its own command as the first token and then listens to the flags provided. (You might also have guessed instead, as I originally did, that clangd invoked the compiler as a dry-run and listened, but that's wrong.)
 
 This means that fancy things like specifying environment variables in the command or passing in a wrapper compiler driver that accepts the same flags but does some unnecessary expansion (Bazel...) will break things. You need to carefully unwrap Bazel's (unnecessary) compiler driver wrappers to get clangd to pick up on commands.
 
@@ -59,7 +78,7 @@ clangd also tries to introspect the compiler specified to figure out what includ
 
 All this means it's crucial to de-Bazel the command we write to compile_commands.json so clangd can parse it. No compiler driver wrappers, Bazel-specific environment variable expansion, etc. All this happens in [extract.py](./extract.py), details there.
 
-If you see warning messages like "compilation failed" and "index may be incomplete" for almost all entries in the clangd log, it's because clangd is misparsing the command in a way that breaks its ability to understand things. A few messages like this are fine; they come from (poorly-designed) headers that depend on include order. (See also note about this in README.md "red underlined include" issue.)
+If you see warning messages like "compilation failed" and "index may be incomplete" for almost all entries in the clangd log (view in VSCode under Output>clangd), it's because clangd is misparsing the command in a way that breaks its ability to understand things. A few messages like this are fine; they come from (poorly-designed) headers that depend on include order. (See also note about this in README.md "red underlined include" issue.)
 
 (This section summarizes learnings originally from the discussion in [this issue](https://github.com/clangd/clangd/issues/654) Chris filed, where a Googler working on LLVM was very helpful.)
 
@@ -101,25 +120,25 @@ This points into the accumulating cache under the output base, where external co
 
 Another good option would be having [extract.py](./extract.py) patch external paths, rather than pointing through a symlink. It could prepend paths starting with "external/" with the path of the symlink to get equivalent behavior. We only because it's also a handy way to browse the source code of external dependencies. 
 
-It looks like long ago--and perhaps still inside Google--Bazel created such an `//external` symlink. Tulsi, Bazel's XCode helper, once needed the `//external` symlink in the workspace to properly pick up external dependencies. This is no longer true, though you can see some of the history [here](https://github.com/bazelbuild/tulsi/issues/164). 
+It looks like long ago--and perhaps still inside Google—Bazel created such an `//external` symlink. Tulsi, Bazel's XCode helper, once needed the `//external` symlink in the workspace to properly pick up external dependencies. This is no longer true, though you can see some of the history [here](https://github.com/bazelbuild/tulsi/issues/164). 
 
 
 ## Choice of Strategy for Listening To Bazel
 
 We're using bazel's [aquery ("action query")](https://docs.bazel.build/versions/master/aquery.html) subcommand to dump out all of the compiler invocations Bazel intends to use as part of a build. The key important features of aquery that make it the right choice are (1) that it operates over compile actions, so it directly gives us access to the configured compile invocations we need for compile_commands.json and (2) that it's comparatively really fast because it doesn't do a full build.
 
-Previously, we'd built things using [action_listeners](https://docs.bazel.build/versions/master/be/extra-actions.html). (The old, original implementation lives in our git history). Action listeners are good in that, like aquery, they directly listen at the level of compile actions. However, they can only be invoked at the same time as a full build. This makes the first generation *really* slow--like 30m instead of aquery's 30s. Rebuilds that should hit a warm cache are also slow (~10m) if you have multiple targets, which has to be an [unnecessary cache miss bug in Bazel](https://github.com/bazelbuild/bazel/issues/13029). You might be able to get around the 30m cold issue by suppressing build with [--nobuild](https://docs.bazel.build/versions/master/command-line-reference.html#flag--build), though we haven't tried it and it might disrupt the output protos or otherwise not work. (Only haven't tried because we switched implementations before finding the flag.) Another key downside compared to aquery is that action_listener output accumulates in the build tree, and there's no no way to tell which outputs are fresh. There's always the risk that stale output could bork your compile_commands.json, so you need to widen the user interface to include a cleaning step. An additional issue is future support: action listeners are marked as experimental in their docs and there are [occasional, stale references to deprecating them](https://github.com/bazelbuild/bazel/issues/4824). The main (but hopeful temporary) benefit of action listeners is that they auto-identify headers used by a given source file, which makes working around the [header commands inference issue](https://github.com/clangd/clangd/issues/519) easier. Another smaller benefit is that being integrated with building guarantees generated files have been generated. So while action_listeners can get the job done, they're slow and the abstraction is leaky and questionably supported.
+Previously, we'd built things using [action_listeners](https://docs.bazel.build/versions/master/be/extra-actions.html). (The old, original implementation lives in our git history). Action listeners are good in that, like aquery, they directly listen at the level of compile actions. However, they can only be invoked at the same time as a full build. This makes the first generation *really* slow—like 30m instead of aquery's 30s. Rebuilds that should hit a warm cache are also slow (~10m) if you have multiple targets, which has to be an [unnecessary cache miss bug in Bazel](https://github.com/bazelbuild/bazel/issues/13029). You might be able to get around the 30m cold issue by suppressing build with [--nobuild](https://docs.bazel.build/versions/master/command-line-reference.html#flag--build), though we haven't tried it and it might disrupt the output protos or otherwise not work. (Only haven't tried because we switched implementations before finding the flag.) Another key downside compared to aquery is that action_listener output accumulates in the build tree, and there's no no way to tell which outputs are fresh. There's always the risk that stale output could bork your compile_commands.json, so you need to widen the user interface to include a cleaning step. An additional issue is future support: action listeners are marked as experimental in their docs and there are [occasional, stale references to deprecating them](https://github.com/bazelbuild/bazel/issues/4824). The main (but hopeful temporary) benefit of action listeners is that they auto-identify headers used by a given source file, which makes working around the [header commands inference issue](https://github.com/clangd/clangd/issues/519) easier. Another smaller benefit is that being integrated with building guarantees generated files have been generated. So while action_listeners can get the job done, they're slow and the abstraction is leaky and questionably supported.
 
-What you really don't want to do is use bazel query, cquery, or aspect if you want compile commands. The primary problem with each is that they crawl the graph of bazel targets (think graph nodes), rather than actually listening to the commands Bazel is going to invoke during its compile actions. We're trying to output compile commands, not graph nodes, and it's not a 1:1 relationship! The perils here are surfaced by Bazel platform transitions. In Bazel, rules often configure their dependencies through a mechanism known as transitions. Any of these node-at-a-time strategies will miss those dependency configurations, since they'll view the nodes as independent and won't know they're being compiled (possibly multiple times!) for different platforms. Both aspects and query have issues with select() statements, unlike cquery, which takes configuration into account (hence "configured query"->cquery). But aspects are particularly problematic because they only propagate along a named attribute (like "deps"), breaking the chain at things like genrules, which name things differently ("srcs" not "deps" for genrules). Bazel's IntelliJ/Android Studio adapter takes the aspects approach, and it breaks down even on a single platform (see //AndroidStudioAdapter...). But query, cquery, and aspects share the key fundamental flaw of operating on nodes not edges.
+What you really don't want to do is use bazel query, cquery, or aspect if you want compile commands. The primary problem with each is that they crawl the graph of bazel targets (think graph nodes), rather than actually listening to the commands Bazel is going to invoke during its compile actions. We're trying to output compile commands, not graph nodes, and it's not a 1:1 relationship! The perils here are surfaced by Bazel platform transitions. In Bazel, rules often configure their dependencies through a mechanism known as transitions. Any of these node-at-a-time strategies will miss those dependency configurations, since they'll view the nodes as independent and won't know they're being compiled (possibly multiple times!) for different platforms. Both aspects and query have issues with select() statements, unlike cquery, which takes configuration into account (hence "configured query"->cquery). But aspects are particularly problematic because they only propagate along a named attribute (like "deps"), breaking the chain at things like genrules, which name things differently ("srcs" not "deps" for genrules). But query, cquery, and aspects share the key fundamental flaw of operating on nodes not edges.
 
 
 ### References Used When Building
 
-There were a handful of existing implementations for getting compile commands from Bazel. None came particularly close to working well across platforms, falling into the gotchas listed in this doc. Here they are, categorized by type and problem, sorted by closest to working.
+There were a handful of existing implementations for getting compile commands from Bazel. None came particularly close to working well across platforms we were trying, falling into the gotchas listed in this doc, but we really appreciate the effort that went into them and the learnings we gleaned. Here they are, categorized by type and problem, sorted by closest to working.
 
-The closest--and only aquery approach: https://github.com/thoren-d/compdb-bazel. It's Windows-clang-specific, but could be a good resource if we're ever trying to get things to work on Windows. We didn't add to it because it looked stale, had a somewhat inelegant approach, and wouldn't have had much reusable code.
+The closest—and only aquery approach: https://github.com/thoren-d/compdb-bazel. It's Windows-clang-specific, but could be a good resource if we're ever trying to get things to work on Windows. We didn't add to it because it looked stale, had a somewhat inelegant approach, and wouldn't have had much reusable code.
 
-Action-listener-based approaches (see pros and cons above). These helped bootstrap our intial, action-listener-based implementation.
+Action-listener-based approaches (see pros and cons above). These helped bootstrap our initial, action-listener-based implementation.
 
 - Medium-full implementation here, but has bugs associated with bazel structure, in addition to the execroot and wrapping issues discussed above. Perhaps bazel's directory structure has changed since it was released. https://github.com/vincent-picaud/Bazel_and_CompileCommands
   - It's based on [this gist](https://gist.github.com/bsilver8192/0115ee5d040bb601e3b7).
@@ -135,26 +154,8 @@ Action-listener-based approaches (see pros and cons above). These helped bootstr
 Aspect-based approaches. They're the most commonly used despite the approach having real problems (see above).
 - https://github.com/grailbio/bazel-compilation-database is probably the most popular for generating Bazel compile_commands.json. But it's really far from working for us. No unwrapping, no ability to pick up platform flags, all the aspect issues, etc.
 - Bazel's official editor plugins. Note: editor plugins, *not* compile_commands.json generators.
-  - Bazel's IntelliJ adapter. Problems? All the usual subjects for aspects. See //AndroidStudioAdapter.
+  - Bazel's IntelliJ adapter. Problems? All the usual subjects for aspects.
   - [Tulsi](https://github.com/bazelbuild/tulsi). Smarter about working around some of the issues, which they can do by reimplementing some of the Apple specific logic, rather than listening for it. See XCodeAdapter/ImplementationReadme.md.
   - There's no support in the VSCode plugin. I'd filed https://github.com/bazelbuild/vscode-bazel/issues/179 originally.
 
 A totally different approach that won't work with Bazel: [BEAR (Build EAR)](https://github.com/rizsotto/Bear) builds compile_commands.json by listening in on compiler invocations and records what it finds during a build. This lets it work across a variety of build systems...except Bazel, because it's hermeticity measures (keeping compilation as a pure function) screen out exactly the type of tinkering BEAR tries to do. It might be doable, but it would need more injection work, probably, than we'd want, and a build to listen to. See Bazel marked "wontfix" [here](https://github.com/rizsotto/Bear/issues/170).
-
-
-## Open Sourcing & Community Links
-
-We'd consider open sourcing (and doing the work to decouple it) if there's enough interest that we'd get some help fixing things from others.
-
-Assessing interest here: https://github.com/bazelbuild/vscode-bazel/issues/179
-
-Links that could be handy for getting the word out:
-
-Email about new solution: https://sarcasm.github.io/notes/dev/compilation-database.html#bazel
-Issue we fix: https://github.com/grailbio/bazel-compilation-database/issues/57
-Main bazel issue: https://github.com/bazelbuild/bazel/issues/258
-And on the gist/other implementations listed above. People go there looking for solutions and are gonna be disappointed!
-
-Grailbio retired: https://github.com/grailbio/bazel-compilation-database
-
-Could even try to get it listed in the LLVM compile_commands.json [spec](https://clang.llvm.org/docs/JSONCompilationDatabase.html) because it has instructions per build system.
