@@ -1,7 +1,7 @@
 """ refresh_compile_commands rule
 
 When `bazel run`, these rules refresh the compile_commands.json in the root of your Bazel workspace
-    [Creates compile_commands.json if it doesn't exist already.]
+    [creating compile_commands.json if it doesn't already exist.]
 
 Best explained by concrete example--copy the following and follow the comments:
 ```
@@ -14,15 +14,18 @@ refresh_compile_commands(
         # This will create compile commands entries for all the code compiled by those targets, including transitive dependencies.
         # It's optional, but if you're reading this, you probably want to. 
     # Usually, you'll want to specify the output targets you care about.
-        # This avoids issus where some targets can't be built on their own; they need configuration by a parent rule. android_binaries using transitions to configure android_libraries are an example.
+        # This avoids issues where some targets can't be built on their own; they need configuration by a parent rule. android_binaries using transitions to configure android_libraries are an example.
     # The targets parameter is forgiving in its inputs.
         # You can specify just one target:
             # targets = "//:my_output_binary_target",
         # Or a list of targets:
             # targets = ["//:my_output_1", "//:my_output_2"],
         # Or a dict of targets and their arguments:
-            # targets = {"//:my_output_1": "--important_flag1 --important_flag2=true, "//:my_output_2": ""},
-        # If you don't specify a target, that's fine (if it works for you); compile_commands.json will default to containing commands used in building all possible targets. But in that case, just run @hedron_compile_commands//:refresh_all
+            # targets = {
+            #   "//:my_output_1": "--important_flag1 --important_flag2=true, 
+            #   "//:my_output_2": ""
+            # },
+        # If you don't specify a target, that's fine (if it works for you); compile_commands.json will default to containing commands used in building all possible targets. But in that case, just bazel run @hedron_compile_commands//:refresh_all
         # Wildcard target patterns (..., *, :all) patterns are allowed, like in bazel build:
             # For more, see https://docs.bazel.build/versions/main/guide.html#specifying-targets-to-build
 )
