@@ -68,7 +68,7 @@ We'll get it running and then move onto the next section while it whirrs away. B
 
 In that case, just `bazel run @hedron_compile_commands//:refresh_all` 
 
-##### 2. But often, you'll want to specify the output targets you care about. This avoids issues where some targets can't be built on their own; they need configuration on the command line by a parent rule. android_binaries using transitions to configure android_libraries are an example of the latter.
+##### 2. Often, though, you'll want to specify the output targets you care about. This avoids issues where some targets can't be built on their own; they need configuration on the command line by a parent rule. android_binaries using transitions to configure android_libraries are an example of the latter.
 
 In that case, you can easily specify the output targets you're working on and the flags needed to build them.
 

@@ -1,7 +1,6 @@
 # Hedron's Compile Commands Extractor for Bazel — License
 
-
-We've gotten a bunch of requests to release this tool.
+We've received a bunch of requests to release this tool.
 Together, let's make what was originally a handy, Hedron-internal tool more useful to more people. We hope that it's a win for you!
 
 **Goals:** 
@@ -12,7 +11,7 @@ Together, let's make what was originally a handy, Hedron-internal tool more usef
 
 [For clarity: This is intended to be a source-available & contribution-encouraging license of a Hedron tool; we're trying to broaden usage and improvements, but  not make it FSF-style free software or similar. We're trying to help--but also retain some rights. If that doesn't work for your needs, though, let's talk! There are open, friendly, learning humans behind this :) ] 
 
-The actual license follows (and controls). By downloading or using this software or any related content (the "Software"), you are agreeing to be bound by the terms of this agreement. If you do not or cannot agree to the terms of this Agreement, please do not download, use, or contribute to the Software.
+The actual license follows (and controls). By downloading or using this software or any related content (the "Software"), you agree to be bound by the terms of this agreement. If you do not or cannot agree to the terms of this agreement, please do not download, use, or contribute to the Software.
 
 ---
 
@@ -24,7 +23,7 @@ Hedron Vision Incorporated ("Hedron") hereby grants each recipient ("you") of th
 
 <!-- Contributions/improvements/feedback welcome. If public, they stay centrally with Hedron, as consideration for the free use to the extent required. -->
 
-We strongly encourage you to contribute improvements to the Software and to collaborate in making it better. To that end, you may publish your changes or feedback either publicly or to third parties--i.e. through a fork for a PR or an issue--but only for the temporary purpose of contributing those improvements back to [the main repository](https://github.com/hedronvision/bazel-compile-commands-extractor). You agree that Hedron retains all right, title and interest in and to all such contributions. Further, you agree to not charge others for their use of this software or for using your changes to this software.
+We strongly encourage you to contribute improvements to the Software and to collaborate in making it better. To that end, you may publish your changes or feedback either publicly or to third parties--i.e., through a fork for a PR or an issue--but only for the temporary purpose of contributing those improvements back to [the main repository](https://github.com/hedronvision/bazel-compile-commands-extractor). You agree that Hedron retains all right, title and interest in and to all such contributions. Further, you agree to not charge others for their use of this Software or for using your changes to this Software.
 
 ---
 
