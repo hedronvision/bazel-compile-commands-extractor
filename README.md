@@ -10,10 +10,18 @@
 
 *For everyday use, we'd recommend using this rather than the platform-specific IDE adapters (like Tulsi or ASwB), except the times when you need some platform-editor-specific feature (e.g. Apple's NextStep Interface Builder) that's not ever going to be supported in a cross-platform editor.*
 
+## Usage Visuals
+
+![Usage Animation](https://user-images.githubusercontent.com/7157583/142501309-862e89e2-02b4-4b61-950c-8b7e1bfd7eb7.gif)
+
+▲ Extracts compile_commands.json, enabling [clangd autocomplete](https://github.com/clangd/vscode-clangd) in your editor ▼
+
+![clangd help example](https://user-images.githubusercontent.com/7157583/142502357-af9ba056-f9e0-47ce-b69d-57e85dcca458.png)
+
 
 ## Usage
 
-Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for the C language family. 🐎
+Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for the C language family.
 
 There's a bunch of text here, but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete!
 
@@ -31,8 +39,7 @@ http_archive(
     name = "hedron_compile_commands",
 
     # Replace the commit hash in both places (below) with the latest. 
-    # We won't always update it.
-    # Even better, set up Renovate (see "Suggestion: Updates" below).
+    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" below).
     url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/9d8b3d5925728c3206010ed0062826a9faaebc2c.tar.gz",
     strip_prefix = "bazel-compile-commands-extractor-9d8b3d5925728c3206010ed0062826a9faaebc2c",
 )
