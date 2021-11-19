@@ -23,7 +23,7 @@
 
 Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for the C language family.
 
-There's a bunch of text here, but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete!
+There's a bunch of text here but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete!
 
 ### First, do the usual WORKSPACE setup.
 
