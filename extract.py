@@ -53,8 +53,7 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
         if arg != '-o' and not arg.endswith('.o'))
 
     # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files
-    header_cmd = list(header_cmd) + ['--dependencies', "--print-missing-file-dependencies"]
-    headers_makefile_out = subprocess.check_output(header_cmd, encoding='utf-8', cwd=os.environ['BUILD_WORKSPACE_DIRECTORY']).rstrip() # Relies on our having made the workspace directory simulate the execroot with //external symlink
+    header_cmd = list(header_cmd) + ['--dependencies', '--print-missing-file-dependencies']
 
     split = headers_makefile_out.replace('\\\n', '').split() # Undo shell line wrapping bc it's not consistent (depends on file name length)
     assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Output:\n" + headers_makefile_out
