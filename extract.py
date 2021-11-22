@@ -64,11 +64,10 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
         headers_makefile_out = e.output # But often, we can get the headers, despite the error
 
     split = headers_makefile_out.replace('\\\n', '').split() # Undo shell line wrapping bc it's not consistent (depends on file name length)
-    assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Output:\n" + headers_makefile_out
-    assert source_path_for_sanity_check is None or split[1].endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. Output:\n" + headers_makefile_out
-
-    headers = [h.strip() for h in split[2:]]
-    assert len(headers) == len(set(headers)), "Compiler should have ensured uniqueness of header files"
+    assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Zeroth entry should be the object file. Output:\n" + headers_makefile_out
+    assert source_path_for_sanity_check is None or split[1].endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. First entry should be the source file. Output:\n" + headers_makefile_out
+    headers = split[2:] # Remove .o and source entries (since they're not headers). Verified above
+    headers = list(set(headers)) # Make unique. GCC sometimes emits duplicate entries https://github.com/hedronvision/bazel-compile-commands-extractor/issues/7#issuecomment-975109458
 
     return headers
 
