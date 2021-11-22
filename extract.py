@@ -197,6 +197,7 @@ if __name__ == '__main__':
     aquery_output = json.loads(sys.stdin.buffer.read(), object_hook=lambda d: SimpleNamespace(**d)) # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
 
     # Process each action from Bazelisms -> file paths and their clang commands
+    # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL
     with concurrent.futures.ThreadPoolExecutor() as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
