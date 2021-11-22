@@ -40,8 +40,8 @@ http_archive(
 
     # Replace the commit hash in both places (below) with the latest. 
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" below).
-    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/9d8b3d5925728c3206010ed0062826a9faaebc2c.tar.gz",
-    strip_prefix = "bazel-compile-commands-extractor-9d8b3d5925728c3206010ed0062826a9faaebc2c",
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/486d6eaf87255b7e15640bb9add58f0a77c1e2b6.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-486d6eaf87255b7e15640bb9add58f0a77c1e2b6",
 )
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 hedron_compile_commands_setup()
