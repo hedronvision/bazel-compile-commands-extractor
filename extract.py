@@ -55,6 +55,14 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
     # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files
     header_cmd = list(header_cmd) + ['--dependencies', '--print-missing-file-dependencies']
 
+    try:
+        headers_makefile_out = subprocess.check_output(header_cmd, encoding='utf-8', cwd=os.environ['BUILD_WORKSPACE_DIRECTORY']).rstrip() # Relies on our having made the workspace directory simulate the execroot with //external symlink
+    except subprocess.CalledProcessError as e:
+        # Tolerate failure gracefully--during editing the code may not compile!
+        if not e.output: # Worst case, we couldn't get the headers
+            return []
+        headers_makefile_out = e.output # But often, we can get the headers, despite the error
+
     split = headers_makefile_out.replace('\\\n', '').split() # Undo shell line wrapping bc it's not consistent (depends on file name length)
     assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Output:\n" + headers_makefile_out
     assert source_path_for_sanity_check is None or split[1].endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. Output:\n" + headers_makefile_out
