@@ -134,7 +134,9 @@ Once you've succeeded in setting up another editor—or set up clangtidy, or oth
 
 ## "Smooth Edges" — what we've enjoyed using this for.
 
-You should now be all set to go! Here's what you should be expecting, based on our experience:
+You should now be all set to go! Way to make it through setup. 
+
+### Here's what you should be expecting, based on our experience:
 
 We use this tool every day to develop a cross-platform library for iOS and Android on macOS. Expect Android completion in Android source, macOS in macOS, iOS in iOS, etc. 
 
@@ -146,9 +148,11 @@ We think it'll work for Android and Linux on Linux (but aren't using it for that
 
 ## Rough Edges
 
-We've self-filed issues for the rough edges we know about and are tracking. We'd love to hear from you there about what you're seeing, good and bad. Please add things if you find more rough edges, and let us know if you need help.
+We've self-filed issues for the rough edges we know about and are tracking. We'd love to hear from you there about what you're seeing, good and bad. Please add things if you find more rough edges, and let us know if you need help or more features.
 
-We'd also love to work with you on contributions, of course! Development setup isn't onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md)
+On the other hand, if you've set things up and they're working well, we'd still love to hear from you. Please file a "non-issue" in the issues tab describing your success! We'd love to hear what you're working on, what platforms you're using, and what you're finding most useful. And maybe also toss a star our way so we know it was helpful to you.
+
+We'd also love to work with you on contributions and improvements, of course! Development setup isn't onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md) The codebase is super clean and friendly. Stepping into the code is a fun and efficient way to get the improvements you want.
 
 ---
 *Looking for implementation details instead? Want to dive into the codebase?*
