@@ -138,13 +138,13 @@ You should now be all set to go! Way to make it through setup.
 
 ### Here's what you should be expecting, based on our experience:
 
-We use this tool every day to develop a cross-platform library for iOS and Android on macOS. Expect Android completion in Android source, macOS in macOS, iOS in iOS, etc. 
+We use this tool every day to develop a cross-platform library for iOS and Android on macOS. Expect Android completion in Android source, macOS in macOS, iOS in iOS, etc. We have people using it on Linux/Ubuntu, too.
 
 All the usual clangd features should work. CMD/CTRL+click navigation (or option if you've changed keybindings), smart rename, autocomplete, highlighting etc. Everything you expect in an IDE should be there (because most good IDEs are backed by clangd). As a general principle: If you're choosing tooling that needs to understand a programming language, you want it to be based on a compiler frontend for that language, which clangd does as part of the LLVM/clang project.
 
 Everything should also work for generated files, though you may have to run a build for the generated file to exist.
 
-We think it'll work for Android and Linux on Linux (but aren't using it for that yet; let us know your experience in an issue!). We'd expect Windows to need some patching parallel to that for macOS (in [extract.py](./extract.py)), but it should be a relatively easy adaptation compared to writing things from scratch. If you fall into either case, let us know. We'd love to work together to get things working smoothly on other host platforms.
+We haven't yet tested on Windows. Windows might need some patching parallel to that for macOS (in [extract.py](./extract.py)), but it should be a relatively easy adaptation compared to writing things from scratch. If you're trying to use it on Windows, let us know [here](https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8). We'd love to work together to get things working smoothly.
 
 ## Rough Edges
 
