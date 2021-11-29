@@ -75,7 +75,7 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
 def _get_files(compile_args: List[str]):
     """Gets all source files clangd should be told the command applies to."""
     # Whole C-language family.
-    source_extensions = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.S')
+    source_extensions = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.S', '.s', '.asm', '.cu', '.cl')
     source_files = [arg for arg in compile_args if arg.endswith(source_extensions)]
 
     assert len(source_files) > 0, f"No sources detected in {compile_args}"
