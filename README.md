@@ -2,7 +2,7 @@
 
 **What is this project trying to do for me?** 
 
-*First, provide Bazel users cross-platform autocomplete for (Objective-)C(++) to make development more efficient and fun. More generally, export Bazel build actions into the compile_commands.json format that enables great tooling decoupled from Bazel.*
+*First, provide Bazel users cross-platform autocomplete for C++, C, Objective-C, and Objective-C++ (collectively, "the C language family" or "(Objective-)C(++)") to make development more efficient and fun. More generally, export Bazel build actions into the compile_commands.json format that enables great tooling decoupled from Bazel.*
 
 **Status:** *Pretty great with minor rough edges. We use this every day and love it.*
 
