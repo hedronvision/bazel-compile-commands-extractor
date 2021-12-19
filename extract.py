@@ -204,12 +204,16 @@ if __name__ == '__main__':
     bazel_workspace_dir = os.environ['BUILD_WORKSPACE_DIRECTORY'] # Set by `bazel run`. Can't call `bazel info workspace` because bazel is running us outside the workspace.
     # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
 
-    # Dump em to stdout as compile_commands.json entries
+    # Dump em to stdout as compile_commands.json 
+    first = True
     for files, command in outputs:
         for file in files:
+            if not first:
+                sys.stdout.write(',')
+            else:
+                first = False
             sys.stdout.write(json.dumps({
                 'file': file,
                 'command': command,
                 'directory': bazel_workspace_dir
             }, indent=2, check_circular=False))
-            sys.stdout.write(',')
