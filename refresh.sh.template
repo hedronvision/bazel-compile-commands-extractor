@@ -64,4 +64,5 @@ printf "[" > compile_commands.json # Add json list around. Commands add their ow
 {get_commands}
 # End: Command template filled by Bazel
 
-printf "]" >> compile_commands.json # Yes, there's an extra comma at the end of the list, but clangd parses fine.
+sed -i '' '$ s/,$//' compile_commands.json # Remove extra, trailing comma
+printf "]" >> compile_commands.json
