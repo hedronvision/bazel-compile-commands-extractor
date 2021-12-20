@@ -64,5 +64,5 @@ printf "[" > compile_commands.json # Add json list around. Commands add their ow
 {get_commands}
 # End: Command template filled by Bazel
 
-sed -i '' '$ s/,$//' compile_commands.json # Remove extra, trailing comma
+# sed -i '' '$ s/,$//' compile_commands.json # Remove extra, trailing comma
 printf "]" >> compile_commands.json
