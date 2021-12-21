@@ -44,7 +44,7 @@ get_commands() {
         --output=jsonproto "${@:2}" > "$TMPFILE"
         < "$TMPFILE" bazel run @hedron_compile_commands//:extract \
             --ui_event_filters=-info --noshow_progress # Shush logging. Just for readability.
-    } 2>&1 >> compile_commands.json | sed -e '
+    } 2>&1 >> compile_commands.json | sed '
 # Further hide Bazel build details.
     # [Deletes both lines of the notification that the build of :extract has completed.]
 /Target .*:extract up-to-date:/{N;d;}
