@@ -96,19 +96,6 @@ def _check_in_clang_args_format(compile_args: List[str]):
     assert compile_args[0].endswith(('clang', 'clang++', 'gcc', 'g++')), f"Compiler doesn't look like normal clang/gcc. Time to add windows support? CMD: {compile_args}"
 
 
-def _all_platform_patch(compile_args: List[str]):
-    """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
-    # clangd writes module cache files to the wrong place
-    # Without this fix, you get tons of module caches dumped into the VSCode root folder.
-    # Filed clangd issue at: https://github.com/clangd/clangd/issues/655
-    # Seems to have disappeared when we switched to aquery from action_listeners, but we'll leave it in until the bug is patched in case we start using C++ modules
-    compile_args = (arg for arg in compile_args if not arg.startswith('-fmodules-cache-path=bazel-out/'))
-
-    # Any other general fixes would go here...
-
-    return list(compile_args)
-
-
 @functools.lru_cache(maxsize=None)
 def _get_apple_SDKROOT(SDK_name: str):
     """Get path to xcode-select'd root for the given OS."""
@@ -170,6 +157,19 @@ def _apple_platform_patch(compile_args: List[str]):
         compile_args = [arg.replace('__BAZEL_XCODE_SDKROOT__', _get_apple_SDKROOT(apple_platform)) for arg in compile_args]
 
     return compile_args
+
+
+def _all_platform_patch(compile_args: List[str]):
+    """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
+    # clangd writes module cache files to the wrong place
+    # Without this fix, you get tons of module caches dumped into the VSCode root folder.
+    # Filed clangd issue at: https://github.com/clangd/clangd/issues/655
+    # Seems to have disappeared when we switched to aquery from action_listeners, but we'll leave it in until the bug is patched in case we start using C++ modules
+    compile_args = (arg for arg in compile_args if not arg.startswith('-fmodules-cache-path=bazel-out/'))
+
+    # Any other general fixes would go here...
+
+    return list(compile_args)
 
 
 def _get_cpp_command_for_files(compile_action: json):
