@@ -64,5 +64,5 @@ printf "[" > compile_commands.json # Add json list around. Commands add their ow
 {get_commands}
 # End: Command template filled by Bazel
 
-sed -i.tmp '$ s/,$//' compile_commands.json && rm -f compile_commands.json.tmp # Remove extra, trailing comma. No BSD and GNU compatible way of not saving a temporary backup--hence manual specification of extension and deletion.
+sed -i.tmp '$ s/,$//' compile_commands.json && rm -f compile_commands.json.tmp # Remove extra, trailing comma. No BSD and GNU compatible way of not saving a temporary backup--hence manual specification of extension and deletion. OPTIMNOTE: Copies the (large for now) compile_commands.json. Could be made more efficient by writing a small custom tool that strips the last comma in place--note that there may be no such comma if there are no compile commands.
 printf "]" >> compile_commands.json
