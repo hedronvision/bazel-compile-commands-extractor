@@ -124,7 +124,7 @@ def _check_in_clang_args_format(compile_args: List[str]):
     # Just sharing an assert we use twice. When https://github.com/clangd/clangd/issues/519 is resolved, we can fold this into the single caller.
     # Quickly just check that the compiler looks like clang.
     # Really clang is mimicing gcc for compatibility, but clang is so dominant these days, that we'll name the function this way.
-    assert compile_args[0].endswith(('clang', 'clang++', 'gcc', 'g++')), f"Compiler doesn't look like normal clang/gcc. Time to add windows support? CMD: {compile_args}"
+    assert re.search(r'(?:clang|clang\+\+|gcc|g\+\+)(?:-[0-9\.]+)?$', compile_args[0]), f"Compiler doesn't look like normal clang/gcc. Time to add windows support? CMD: {compile_args}"
 
 
 @functools.lru_cache(maxsize=None)
