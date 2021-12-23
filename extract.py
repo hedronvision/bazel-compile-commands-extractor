@@ -23,7 +23,7 @@ from types import SimpleNamespace
 from typing import Optional, List
 
 
-# OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/519. To workaround we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
+# OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To workaround we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
 # There are some optimizations that would improve speed and file size but we intentionally haven't done them because we anticipate that this problem will be temporary; clangd improves fast. 
     # The simplest would be to only emit one entry per file--omitting an incomplete compilation database but one that's smaller and good enough for clangd.
         # ...by skipping source and header files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, because header finding is already multithreaded for speed (same speed win as single-threaded set).
@@ -36,7 +36,7 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
 
     Relatively slow. Requires running the C preprocessor.
     """
-    # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/519)
+    # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/123)
     # Runs a modified version of the compile command to piggyback on the compiler's preprocessing and header searching.
     _check_in_clang_args_format(compile_args) # Assuming clang/gcc flag format.
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
@@ -80,7 +80,7 @@ def _get_files(compile_args: List[str]):
     assert len(source_files) <= 1, f"Multiple sources detected. Might work, but needs testing, and unlikely to be right given bazel. CMD: {compile_args}"
 
     # Note: We need to apply commands to headers and sources.
-    # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/519 for more.
+    # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and files can just be the single source file. Good opportunity to clean that out.
     if source_files[0] in _get_files.assembly_source_extensions: # Assembly sources that are not preprocessed can't include headers
         return source_files 
@@ -121,7 +121,7 @@ _get_files .extensions_to_language_args = {ext : flag for exts, flag in _get_fil
 
 
 def _check_in_clang_args_format(compile_args: List[str]):
-    # Just sharing an assert we use twice. When https://github.com/clangd/clangd/issues/519 is resolved, we can fold this into the single caller.
+    # Just sharing an assert we use twice. When https://github.com/clangd/clangd/issues/123 is resolved, we can fold this into the single caller.
     # Quickly just check that the compiler looks like clang.
     # Really clang is mimicing gcc for compatibility, but clang is so dominant these days, that we'll name the function this way.
     assert re.search(r'(?:clang|clang\+\+|gcc|g\+\+)(?:-[0-9\.]+)?$', compile_args[0]), f"Compiler doesn't look like normal clang/gcc. Time to add windows support? CMD: {compile_args}"
