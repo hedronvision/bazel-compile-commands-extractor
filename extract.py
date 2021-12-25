@@ -7,6 +7,7 @@ Requires being run under Bazel.
 
 Input (stdin): jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
 Output (stdout): Corresponding entries for a compile_commands.json, with commas after each entry, describing all ways every file is being compiled.
+    Also includes one entry per header, describing one way it is compiled (to work around https://github.com/clangd/clangd/issues/123).
 
 Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific compiler wrappers, environment variables, etc.
 """
@@ -14,6 +15,7 @@ Crucially, this de-Bazels the compile commands it takes as input, leaving someth
 
 import concurrent.futures
 import functools
+import itertools
 import json
 import os
 import re
@@ -23,12 +25,12 @@ from types import SimpleNamespace
 from typing import Optional, List
 
 
-# OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To workaround we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
-# There are some optimizations that would improve speed and file size but we intentionally haven't done them because we anticipate that this problem will be temporary; clangd improves fast. 
-    # The simplest would be to only emit one entry per file--omitting an incomplete compilation database but one that's smaller and good enough for clangd.
-        # ...by skipping source and header files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, because header finding is already multithreaded for speed (same speed win as single-threaded set).
-        # Anticipated speedup: ~2x (30s to 15s.) File size reduced about 22x (350MB to 16MB).
-        # No user impact because clangd currently just picks one command per file arbitrarily, but that will change if they do better multiplatform compilation (see https://github.com/clangd/clangd/issues/681). And if they implement multiplatform compilation, then we wouldn't want to omit subsequent compilations of the same file.
+# OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
+# There is an optimization that would improve speed. We intentionally haven't done it because it has downsides and we anticipate that this problem will be temporary; clangd improves fast. 
+    # The simplest would be to only search for headers once per source file.
+        # Downside: We could miss headers conditionally included, e.g., by platform.
+        # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
+        # Anticipated speedup: ~2x (30s to 15s.)
 
 
 def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional[str] = None):
@@ -73,7 +75,7 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
 
 
 def _get_files(compile_args: List[str]):
-    """Gets all source files clangd should be told the command applies to."""
+    """Gets the ([source files], [header files]) clangd should be told the command applies to."""
     source_files = [arg for arg in compile_args if arg.endswith(_get_files.source_extensions)]
 
     assert len(source_files) > 0, f"No sources detected in {compile_args}"
@@ -83,9 +85,8 @@ def _get_files(compile_args: List[str]):
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and files can just be the single source file. Good opportunity to clean that out.
     if source_files[0] in _get_files.assembly_source_extensions: # Assembly sources that are not preprocessed can't include headers
-        return source_files 
+        return source_files, []
     header_files = _get_headers(compile_args, source_files[0])
-    files = source_files + header_files
 
     # Ambiguous .h headers need a language specified if they aren't C, or clangd will erroneously assume they are C
     # Will be resolved by https://reviews.llvm.org/D116167. Revert f24fc5e when that lands.
@@ -96,8 +97,7 @@ def _get_files(compile_args: List[str]):
         # Insert at front of (non executable) args, because the --language is only supposed to take effect on files listed thereafter
         compile_args.insert(1, _get_files.extensions_to_language_args[os.path.splitext(source_files[0])[1]]) 
 
-
-    return files
+    return source_files, header_files
 # Setup extensions and flags for the whole C-language family.
 _get_files.c_source_extensions = ('.c',)
 _get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C')
@@ -218,9 +218,9 @@ def _get_cpp_command_for_files(compile_action: json):
 
     _check_in_clang_args_format(args) # Sanity check
 
-    files = _get_files(args)
+    source_files, header_files = _get_files(args)
     command = ' '.join(args) # Reformat options as command string
-    return files, command
+    return source_files, header_files, command
 
 
 if __name__ == '__main__':
@@ -237,8 +237,18 @@ if __name__ == '__main__':
     # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
 
     # Dump em to stdout as compile_commands.json entries
-    for files, command in outputs:
-        for file in files:
+    header_file_entries_written = set()
+    for source_files, header_files, command in outputs:
+        # Only emit one entry per header
+        # This makes the output vastly smaller, which has been a problem for users.
+            # e.g. https://github.com/insufficiently-caffeinated/caffeine/pull/577 
+        # Without this, we emit an entry for each header for each time it is included, which is explosively duplicative--the same reason why C++ compilation is slow and the impetus for the new modules.
+        # Revert when https://github.com/clangd/clangd/issues/123 is solved, which would remove the need to emit headers, because clangd would take on that work.
+        # If https://github.com/clangd/clangd/issues/681, we'd probably want to find a way to filter to one entry per platform.
+        header_files = [h for h in header_files if h not in header_file_entries_written]
+        header_file_entries_written.update(header_files)
+
+        for file in itertools.chain(source_files, header_files):
             sys.stdout.write(json.dumps({
                 'file': file,
                 'command': command,
