@@ -89,7 +89,7 @@ def _get_files(compile_args: List[str]):
     header_files = _get_headers(compile_args, source_files[0])
 
     # Ambiguous .h headers need a language specified if they aren't C, or clangd will erroneously assume they are C
-    # Will be resolved by https://reviews.llvm.org/D116167. Revert f24fc5e when that lands.
+    # Will be resolved by https://reviews.llvm.org/D116167. Revert f24fc5e and test when that lands, presumably in clangd14.
     # See also: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/12
     if (any(header_file.endswith('.h') for header_file in header_files) 
         and not source_files[0].endswith(_get_files.c_source_extensions)
