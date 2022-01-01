@@ -40,7 +40,6 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
     """
     # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/123)
     # Runs a modified version of the compile command to piggyback on the compiler's preprocessing and header searching.
-    _check_in_clang_args_format(compile_args) # Assuming clang/gcc flag format.
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
 
     # Strip out existing dependency file generation that could interfere with ours
@@ -119,13 +118,6 @@ _get_files.extensions_to_language_args = {
     _get_files.assembly_needing_c_preprocessor_source_extensions: '--language=assembler-with-cpp',
 }
 _get_files .extensions_to_language_args = {ext : flag for exts, flag in _get_files.extensions_to_language_args.items() for ext in exts} # Flatten map for easier use
-
-
-def _check_in_clang_args_format(compile_args: List[str]):
-    # Just sharing an assert we use twice. When https://github.com/clangd/clangd/issues/123 is resolved, we can fold this into the single caller.
-    # Quickly just check that the compiler looks like clang.
-    # Really clang is mimicing gcc for compatibility, but clang is so dominant these days, that we'll name the function this way.
-    assert re.search(r'(?:clang|clang\+\+|gcc|g\+\+)(?:-[0-9\.]+)?$', compile_args[0]), f"Compiler doesn't look like normal clang/gcc. Time to add windows support? CMD: {compile_args}"
 
 
 @functools.lru_cache(maxsize=None)
@@ -215,8 +207,6 @@ def _get_cpp_command_for_files(compile_action: json):
     args = _all_platform_patch(args)
     args = _apple_platform_patch(args)
     # Android: Fine as is; no special patching needed.
-
-    _check_in_clang_args_format(args) # Sanity check
 
     source_files, header_files = _get_files(args)
     command = ' '.join(args) # Reformat options as command string
