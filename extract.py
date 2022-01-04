@@ -117,7 +117,7 @@ _get_files.extensions_to_language_args = {
     _get_files.assembly_source_extensions: '--language=assembler',
     _get_files.assembly_needing_c_preprocessor_source_extensions: '--language=assembler-with-cpp',
 }
-_get_files .extensions_to_language_args = {ext : flag for exts, flag in _get_files.extensions_to_language_args.items() for ext in exts} # Flatten map for easier use
+_get_files.extensions_to_language_args = {ext : flag for exts, flag in _get_files.extensions_to_language_args.items() for ext in exts} # Flatten map for easier use
 
 
 @functools.lru_cache(maxsize=None)
