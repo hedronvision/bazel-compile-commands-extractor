@@ -1,29 +1,32 @@
-"""Extract the compilation commands from a bazel aquery.
+#!/usr/bin/env python3
 
-This is CompileCommands implementation, not interface. See README.md for documentation of the tool's user interface.
+"""
+As a template, this file helps implement the refresh_compile_commands rule and
+is not part of the user interface.  See ImplementationReadme.md for top-level
+context -- or refresh_compile_commands.bzl for narrower context.
 
-Meant to be run via Bazel by refresh.sh, not directly. See invocation there.
 Requires being run under Bazel.
 
-Input (stdin): jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
-Output (stdout): Corresponding entries for a compile_commands.json, with commas after each entry, describing all ways every file is being compiled.
-    Also includes one entry per header, describing one way it is compiled (to work around https://github.com/clangd/clangd/issues/123).
-
-Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific compiler wrappers, environment variables, etc.
+Interface (after Bazel's template expansion):
+- `bazel run` to make autocomplete (and any other clang tooling!) reflect the
+  latest Bazel build files.
+- No arguments are needed; they're baked into the template expansion.
+- Output: a compile_commands.json in the workspace root that clang tooling (or
+  you!) can look at to figure out how files are being compiled by Bazel
 """
 
-
+from types import SimpleNamespace
 import concurrent.futures
 import functools
 import itertools
 import json
 import os
+import os
+import pathlib
 import re
+import shlex
 import subprocess
-import sys
-from types import SimpleNamespace
-from typing import Optional, List
-
+import typing
 
 # OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
 # There is an optimization that would improve speed. We intentionally haven't done it because it has downsides and we anticipate that this problem will be temporary; clangd improves fast. 
@@ -33,7 +36,7 @@ from typing import Optional, List
         # Anticipated speedup: ~2x (30s to 15s.)
 
 
-def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional[str] = None):
+def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: typing.Optional[str] = None):
     """Gets the headers used by a particular compile command.
 
     Relatively slow. Requires running the C preprocessor.
@@ -76,7 +79,7 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
     return headers
 
 
-def _get_files(compile_args: List[str]):
+def _get_files(compile_args: typing.List[str]):
     """Gets the ([source files], [header files]) clangd should be told the command applies to."""
     source_files = [arg for arg in compile_args if arg.endswith(_get_files.source_extensions)]
 
@@ -132,7 +135,7 @@ def _get_apple_SDKROOT(SDK_name: str):
     # Traditionally stored in SDKROOT environment variable, but not provided.
 
 
-def _get_apple_platform(compile_args: List[str]):
+def _get_apple_platform(compile_args: typing.List[str]):
     """Figure out which Apple platform a command is for.
 
     Is the name used by Xcode in the SDK files, not the marketing name.
@@ -161,7 +164,7 @@ def _get_apple_active_clang():
     # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang' from xcrun -f clang
 
 
-def _apple_platform_patch(compile_args: List[str]):
+def _apple_platform_patch(compile_args: typing.List[str]):
     """De-Bazel the command into something clangd can parse.
 
     This function has fixes specific to Apple platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not.
@@ -190,7 +193,7 @@ def _apple_platform_patch(compile_args: List[str]):
     return compile_args
 
 
-def _all_platform_patch(compile_args: List[str]):
+def _all_platform_patch(compile_args: typing.List[str]):
     """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
     # clangd writes module cache files to the wrong place
     # Without this fix, you get tons of module caches dumped into the VSCode root folder.
@@ -224,26 +227,30 @@ def _get_cpp_command_for_files(compile_action: json):
     command = ' '.join(args) # Reformat options as command string
     return source_files, header_files, command
 
+def extract(directory: pathlib.Path, aquery_output):
+    """
+    Input (stdin): jsonproto output from aquery, pre-filtered to (Objective-)C(++)
+        compile actions for a given build.
+    Output (stdout): Corresponding entries for a compile_commands.json, with commas after each entry, describing all ways every file is being compiled.
+        Also includes one entry per header, describing one way it is compiled (to work around https://github.com/clangd/clangd/issues/123).
 
-if __name__ == '__main__':
-    # Load aquery's output from the proto data being piped to stdin
-    # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
-    aquery_output = json.loads(sys.stdin.buffer.read(), object_hook=lambda d: SimpleNamespace(**d)) # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
+    Crucially, this de-Bazels the compile commands it takes as input, leaving
+    something clangd can understand. The result is a command that could be run from
+    the workspace root directly, with no bazel-specific compiler wrappers,
+    environment variables, etc.
+    """
 
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL
     with concurrent.futures.ThreadPoolExecutor() as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
-    bazel_workspace_dir = os.environ['BUILD_WORKSPACE_DIRECTORY'] # Set by `bazel run`. Can't call `bazel info workspace` because bazel is running us outside the workspace.
-    # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
-
     # Dump em to stdout as compile_commands.json entries
     header_file_entries_written = set()
     for source_files, header_files, command in outputs:
         # Only emit one entry per header
         # This makes the output vastly smaller, which has been a problem for users.
-            # e.g. https://github.com/insufficiently-caffeinated/caffeine/pull/577 
+        # e.g. https://github.com/insufficiently-caffeinated/caffeine/pull/577
         # Without this, we emit an entry for each header for each time it is included, which is explosively duplicative--the same reason why C++ compilation is slow and the impetus for the new modules.
         # Revert when https://github.com/clangd/clangd/issues/123 is solved, which would remove the need to emit headers, because clangd would take on that work.
         # If https://github.com/clangd/clangd/issues/681, we'd probably want to find a way to filter to one entry per platform.
@@ -251,9 +258,74 @@ if __name__ == '__main__':
         header_file_entries_written.update(header_files)
 
         for file in itertools.chain(source_files, header_files):
-            sys.stdout.write(json.dumps({
-                'file': file,
-                'command': command,
-                'directory': bazel_workspace_dir
-            }, indent=2, check_circular=False))
-            sys.stdout.write(',')
+            yield {
+                "file": file,
+                "command": command,
+                # Bazel gotcha warning: If you were tempted to use `bazel info
+                # execution_root` as the build working directory for
+                # compile_commands...search ImplementationReadme.md to learn why
+                # that breaks.
+                "directory": os.fspath(directory),
+            }
+
+
+# Call with the same flags as `bazel build`, one target per call, followed by flags
+# Yields the entries to compile_commands.json
+def get_commands(directory: pathlib.Path, target: str, flags: str) -> str:
+    # Log clear completion messages
+    print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m")
+
+    # Queries Bazel's C-family compile actions, and runs them through our extract.py reformatter
+    # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
+    # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
+    # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
+
+    cmd = [
+        "bazel",
+        "aquery",
+        f"mnemonic('(Objc|Cpp)Compile',deps({target}))",
+        "--ui_event_filters=-info",
+        "--noshow_progress",
+        "--output=jsonproto",
+    ] + shlex.split(flags)
+
+    completed = subprocess.run(
+        cmd,
+        cwd=os.fspath(directory),
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+
+    # Load aquery's output from the proto data being piped to stdin
+    # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
+    yield from extract(
+        directory,
+        # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
+        json.loads(completed.stdout, object_hook=lambda d: SimpleNamespace(**d)),
+    )
+
+    # Log clear completion messages
+    print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m")
+
+
+def get_all_commands(directory: pathlib.Path) -> typing.Iterable[str]:
+    args = [
+        # Begin: Command template filled by Bazel
+        # {get_commands}
+        # End: Command template filled by Bazel
+    ]
+    for (target, flags) in args:
+        yield from get_commands(directory, target, flags)
+
+
+if __name__ == "__main__":
+    # Get workspace's root so compile_commands.json goes the right place
+    # -- and so we can invoke Bazel on the repo within this script.
+    directory = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+    commands = get_all_commands(directory)
+
+    # Chain output into compile_commands.json
+    with open(directory / "compile_commands.json", "w") as fob:
+        json.dump(list(commands), fob)

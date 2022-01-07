@@ -40,26 +40,27 @@ def refresh_compile_commands(name, targets = None):
         targets = {target: "" for target in targets}
     elif type(targets) != "dict": # Assume they've supplied a single string/label and wrap it 
         targets = {targets: ""}
-    
-    _refresh_compile_commands(name = name, labels_to_flags = targets)
+
+    script_name = name + ".py"
+    _expand_template(name = script_name, labels_to_flags = targets)
+    native.py_binary(name=name, srcs=[script_name])
 
 
-def _refresh_compile_commands_impl(ctx):
-    # Inject targets of interest into refresh.sh.template, and set it up to be run.
-    script = ctx.actions.declare_file(ctx.attr.name + ".sh")
+def _expand_template_impl(ctx):
+    # Inject targets of interest into refresh.template.py, and set it up to be run.
+    script = ctx.actions.declare_file(ctx.attr.name)
     ctx.actions.expand_template(
         output = script,
         is_executable = True,
         template = ctx.file._script_template,
-        substitutions = {"{get_commands}": "\n".join(["get_commands %s %s" % p for p in ctx.attr.labels_to_flags.items()])}
+        substitutions = {"        # {get_commands}": "\n".join(["        (%r, %r)," % p for p in ctx.attr.labels_to_flags.items()])}
     )
     return DefaultInfo(executable = script)
 
-_refresh_compile_commands = rule(
-    executable = True,
+_expand_template = rule(
     attrs = {
         "labels_to_flags": attr.string_dict(mandatory = True), # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
-        "_script_template": attr.label(allow_single_file = True, default = "refresh.sh.template")
+        "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py")
     },
-    implementation = _refresh_compile_commands_impl
+    implementation = _expand_template_impl
 )
