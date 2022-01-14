@@ -23,6 +23,7 @@ import itertools
 import json
 import os
 import pathlib
+import platform
 import re
 import shlex
 import subprocess
@@ -41,19 +42,7 @@ if not hasattr(shlex, 'join'):
         # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
         # Anticipated speedup: ~2x (30s to 15s.)
 
-
-def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: typing.Optional[str] = None):
-    """Gets the headers used by a particular compile command.
-
-    Relatively slow. Requires running the C preprocessor.
-    """
-    # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/123)
-    # Runs a modified version of the compile command to piggyback on the compiler's preprocessing and header searching.
-    # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
-
-    # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
-        # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
-
+def _get_headers_gcc(compile_args: typing.List[str], source_path_for_sanity_check: typing.Optional[str] = None):
     # Strip out existing dependency file generation that could interfere with ours.
     # Clang on Apple doesn't let later flags override earlier ones, unfortunately.
     # These flags are prefixed with M for "make", because that's their output format.
@@ -92,6 +81,88 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
     headers = list(set(headers)) # Make unique. GCC sometimes emits duplicate entries https://github.com/hedronvision/bazel-compile-commands-extractor/issues/7#issuecomment-975109458
 
     return headers
+
+
+def _get_headers_msvc(compile_args: typing.List[str]):
+    # We don't want to compile, but only pre-process and show all the included header files. We don't want to have the preprocessed results written to a file, so we get them printed to `stderr`.
+    header_cmd = list(compile_args) + ["/showIncludes", "/EP"]
+
+    # cl.exe expects `INCLUDE` (and normally `LIB` but that is irrelevant here) to be set so that it can find the system headers. We have no idea what the correct paths are. So in case these variables are not set, we need to infer them somehow. These variables might not be set if the user has a custom `cc_toolchain()` configured with `bazel` and does not rely on having sourced vcvarsall.bat.
+    environ = dict(os.environ)
+    if "INCLUDE" not in environ:
+        # We assume the base MSVC install based based on the `cl.exe` path in our command.
+        base = pathlib.Path(header_cmd[0]).parent.parent.parent.parent
+        # And we find the newest Windows 10 kits version that exists.
+        windows_kits = sorted( pathlib.Path("C:\\Program Files (x86)\\Windows Kits\\10\\include").glob("*"))[-1]
+        environ["INCLUDE"] =  os.pathsep.join(
+            (
+                os.fspath(base / "ATLMFC/include"),
+                os.fspath(base / "include"),
+                os.fspath(windows_kits / "ucrt"),
+                os.fspath(windows_kits / "shared"),
+                os.fspath(windows_kits / "um"),
+                os.fspath(windows_kits / "winrt"),
+                os.fspath(windows_kits / "cppwinrt"),
+            )
+        )
+
+    header_search_process  = subprocess.run(
+        header_cmd,
+        cwd=os.environ["BUILD_WORKSPACE_DIRECTORY"],
+        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        env=environ,
+        encoding="utf-8",
+        check=False, # We explicitly ignore errors and carry on.
+    )
+
+    headers = list()
+
+    # Based on the locale, `cl.exe` will emit different marker strings. See also https://github.com/ninja-build/ninja/issues/613#issuecomment-885185024 and https://github.com/bazelbuild/bazel/pull/7966.
+    include_marker = (
+        "注意: 包含檔案:", # Chinese - Taiwan
+        "Poznámka: Včetně souboru:", # Czech
+        "Hinweis: Einlesen der Datei:", # German - Germany
+        "Note: including file:", # English - United States
+        "Remarque : inclusion du fichier : ", # French - France
+        "Nota: file incluso ", # Italian - Italy
+        "メモ: インクルード ファイル: ", # Japanese
+        "참고: 포함 파일:", # Korean
+        "Uwaga: w tym pliku: ", # Polish
+        "Observação: incluindo arquivo:", # Portuguese - Brazil
+        "Примечание: включение файла: ", # Russian
+        "Not: eklenen dosya: ", # Turkish
+        "注意: 包含文件: ", # Chinese - People's Republic of China
+        "Nota: inclusión del archivo:", # Spanish - Spain (Modern Sort)
+    )
+
+    for line in header_search_process.stderr.splitlines():
+        for marker in include_marker:
+            if line.startswith(marker):
+                headers.append(line[len(marker):].strip())
+                break
+        else:
+            print(line, file=sys.stderr)
+
+    return headers
+
+
+def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: typing.Optional[str] = None):
+    """Gets the headers used by a particular compile command.
+
+    Relatively slow. Requires running the C preprocessor.
+    """
+    # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/123)
+    # Runs a modified version of the compile command to piggyback on the compiler's preprocessing and header searching.
+    # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
+
+    # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
+        # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
+
+    # Lets hope this catches cl.exe from the MSVC toolchain and also a clang cl.exe.
+    if compile_args[0].endswith("cl.exe"):
+        return _get_headers_msvc(compile_args)
+    return _get_headers_gcc(compile_args, source_path_for_sanity_check)
 
 
 def _get_files(compile_args: typing.List[str]):
