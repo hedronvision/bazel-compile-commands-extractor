@@ -17,7 +17,7 @@ Then point your main repo (from which you're seeing issues) to use your local de
 ```
 local_repository(
     name = "hedron_compile_commands",
-    path = "../bazel-compile-commands", # Or wherever you put it.
+    path = "../bazel-compile-commands-extractor", # Or wherever you put it.
 )
 ```
 
