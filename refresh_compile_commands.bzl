@@ -4,7 +4,7 @@ When `bazel run`, these rules refresh the compile_commands.json in the root of y
     [creating compile_commands.json if it doesn't already exist.]
 
 Best explained by concrete example--copy the following and follow the comments:
-```
+```Starlark
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
 refresh_compile_commands(
@@ -22,8 +22,8 @@ refresh_compile_commands(
             # targets = ["//:my_output_1", "//:my_output_2"],
         # Or a dict of targets and their arguments:
             # targets = {
-            #   "//:my_output_1": "--important_flag1 --important_flag2=true, 
-            #   "//:my_output_2": ""
+            #   "//:my_output_1": "--important_flag1 --important_flag2=true", 
+            #   "//:my_output_2": "",
             # },
         # If you don't specify a target, that's fine (if it works for you); compile_commands.json will default to containing commands used in building all possible targets. But in that case, just bazel run @hedron_compile_commands//:refresh_all
         # Wildcard target patterns (..., *, :all) patterns are allowed, like in bazel build:

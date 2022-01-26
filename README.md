@@ -29,7 +29,7 @@ There's a bunch of text here but only because we're trying to spell things out a
 
 Copy this into your Bazel WORKSPACE file to add this repo as an external dependency, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
 
-```
+```Starlark
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 
@@ -82,7 +82,7 @@ In that case, you can easily specify the output targets you're working on and th
 
 Open a BUILD file—we'd recommend using (or creating) `//BUILD`—and add something like:
 
-```
+```Starlark
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
 refresh_compile_commands(
@@ -91,8 +91,8 @@ refresh_compile_commands(
     # Specify the targets of interest.
     # For example, specify a dict of targets and their arguments:
     targets = {
-      "//:my_output_1": "--important_flag1 --important_flag2=true, 
-      "//:my_output_2": ""
+      "//:my_output_1": "--important_flag1 --important_flag2=true", 
+      "//:my_output_2": "",
     },
     # For more details, feel free to look into refresh_compile_commands.bzl if you want.
 )

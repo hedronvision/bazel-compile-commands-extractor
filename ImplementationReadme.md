@@ -14,7 +14,7 @@ Get a local copy. (e.g. `git clone git@github.com:hedronvision/bazel-compile-com
 
 Then point your main repo (from which you're seeing issues) to use your local development copy of the compile commands. To do that, open `WORKSPACE`, and swap out the http_archive loading `hedron_compile_commands` with the following.
 
-```
+```Starlark
 local_repository(
     name = "hedron_compile_commands",
     path = "../bazel-compile-commands-extractor", # Or wherever you put it.
