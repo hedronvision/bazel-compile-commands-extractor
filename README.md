@@ -23,11 +23,11 @@
 
 Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for the C language family.
 
-There's a bunch of text here but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete!
+There's a bunch of text here but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete—and we'd love to help you!
 
 ### First, do the usual WORKSPACE setup.
 
-Copy this into your Bazel WORKSPACE file to add this repo as an external dependency.
+Copy this into your Bazel WORKSPACE file to add this repo as an external dependency, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
 
 ```
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -38,10 +38,11 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 http_archive(
     name = "hedron_compile_commands",
 
-    # Replace the commit hash in both places (below) with the latest. 
-    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" below).
+    # Replace the commit hash in both places (below) with the latest, rather than using the stale one here. 
+    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
     url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/084957eaa1bf6e2bd031f50b1f5d04c89273103a.tar.gz",
     strip_prefix = "bazel-compile-commands-extractor-084957eaa1bf6e2bd031f50b1f5d04c89273103a",
+    # When you first run this tool, it'll recommend the a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..." 
 )
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 hedron_compile_commands_setup()
