@@ -170,7 +170,7 @@ def _apple_platform_patch(compile_args: List[str]):
         compile_args[0] = _get_apple_active_clang()
 
         # We have to manually substitute out Bazel's macros so clang can parse the command
-        # Code this mirrors is in https://github.com/keith/bazel/blob/master/tools/osx/crosstool/wrapped_clang.cc
+        # Code this mirrors is in https://github.com/bazelbuild/bazel/blob/master/tools/osx/crosstool/wrapped_clang.cc
         # Not complete--we're just swapping out the essentials, because there seems to be considerable turnover in the hacks they have in the wrapper.
         compile_args = [arg.replace('DEBUG_PREFIX_MAP_PWD', "-fdebug-prefix-map="+os.getcwd()) for arg in compile_args]
         # We also have to manually figure out the values of SDKROOT and DEVELOPER_DIR, since they're missing from the environment variables Bazel provides.
