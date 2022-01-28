@@ -108,11 +108,12 @@ Make sure you have clangd's extension installed and configured.
 
 Then, open VSCode user settings.
 
-Add the following two entries to clangd flags in `"clangd.arguments"` (as written, VSCode will correctly expand ${workspaceFolder} for each workspace):
+Add the following two entries to `"clangd.arguments"`:
 ```
 --header-insertion=never
 --compile-commands-dir=${workspaceFolder}/
 ```
+(Just copy as written; VSCode will correctly expand ${workspaceFolder} for each workspace.)
   -  They get rid of (overzealous) header insertion and are needed to  help it find the compile commands, even when browsing system headers outside the source tree.
   -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory
 
