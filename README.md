@@ -123,9 +123,9 @@ In VSCode user settings:
 Turn on: Clangd: Check Updates
   - At least until https://github.com/clangd/vscode-clangd/issues/138 is resolved. You always want the latest! New great stuff is landing in clangd and it's backwards compatible.
 
-You may need to reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the plugin to load.
+If afterwards clangd doesn't prompt you to download the actual clangd server binary, hit (CMD/CTRL+SHIFT+P)->Download language Server.
 
-If afterwards clangd doesn't prompt you to download the actual clangd server binary, hit (CMD/CTRL+SHIFT+P)->check for language server updates.
+You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the plugin to load. The clangd download should prompt you to do so when it completes.
 
 ### Other Editors
 
