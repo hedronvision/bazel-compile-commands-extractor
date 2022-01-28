@@ -115,7 +115,7 @@ Add the following two, separate entries to `"clangd.arguments"`:
 ```
 (Just copy each as written; VSCode will correctly expand ${workspaceFolder} for each workspace.)
   -  They get rid of (overzealous) header insertion and are needed to  help it find the compile commands, even when browsing system headers outside the source tree.
-  -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory
+  -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory by overriding *both* flags in your *workspace* settings
 
 
 Turn on: Clangd: Check Updates
