@@ -58,8 +58,8 @@ def _refresh_compile_commands_impl(ctx):
 _refresh_compile_commands = rule(
     executable = True,
     attrs = {
-        "labels_to_flags": attr.string_dict(mandatory = True), # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes. # TODO check errors and no build
-        "_script_template": attr.label(allow_single_file = True, default = "refresh.sh.template") # TODO workspaces
+        "labels_to_flags": attr.string_dict(mandatory = True), # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
+        "_script_template": attr.label(allow_single_file = True, default = "refresh.sh.template")
     },
     implementation = _refresh_compile_commands_impl
 )
