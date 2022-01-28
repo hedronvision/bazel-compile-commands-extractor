@@ -106,19 +106,16 @@ Make sure you have clangd's extension installed and configured.
 
 `code --install-extension llvm-vs-code-extensions.vscode-clangd`
 
-Open VSCode workspace settings.
+Then, open VSCode user settings.
 
-Add the following clangd flags (as written, VSCode will expand ${workspaceFolder}).
-  -  They get rid of (overzealous) header insertion and are needed to  help it find the compile commands, even when browsing system headers.
-  -  If your Bazel WORKSPACE is a subdirectory of you project, change --compile-commands-dir to point into that subdirectory
-
-In `"clangd.arguments"`
+Add the following two entries to clangd flags in `"clangd.arguments"` (as written, VSCode will correctly expand ${workspaceFolder} for each workspace):
 ```
 --header-insertion=never
 --compile-commands-dir=${workspaceFolder}/
 ```
+  -  They get rid of (overzealous) header insertion and are needed to  help it find the compile commands, even when browsing system headers outside the source tree.
+  -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory
 
-In VSCode user settings:
 
 Turn on: Clangd: Check Updates
   - At least until https://github.com/clangd/vscode-clangd/issues/138 is resolved. You always want the latest! New great stuff is landing in clangd and it's backwards compatible.
