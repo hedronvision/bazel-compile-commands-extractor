@@ -164,9 +164,13 @@ def _apple_platform_patch(compile_args: List[str]):
     This function has fixes specific to Apple platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not.
     """
     compile_args = list(compile_args)
-    if any('__BAZEL_XCODE_' in arg for arg in compile_args): # Bazel internal environment variable fragment that distinguishes Apple platforms
-        # Undo Bazel's compiler wrapping.
+    # Bazel internal environment variable fragment that distinguishes Apple platforms that need unwrapping.
+        # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is. 
+    if any('__BAZEL_XCODE_' in arg for arg in compile_args):
+        # Undo Bazel's Apple platform compiler wrapping.
         # Bazel wraps the compiler as `external/local_config_cc/wrapped_clang` and exports that wrapped compiler in the proto, and we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
+        # It's also important because Bazel's Xcode (but not CommandLineTools) wrapper crashes if you don't specify particular environment variables (replaced below).
+        # When https://github.com/clangd/clangd/issues/123 is resolved, we might be able to remove this line without causing crashes or missing standard library or system framework red squigglies, since clangd is able to work correctly through other wrappers, like the CommandLineTools wrapper or the llvm wrappers. But currently, it's critical for being able to invoking the command to get headers without depending on environment variables. Still, it probably makes sense to leave it so the commands in compile_commands.json are invokable independent of Bazel. 
         compile_args[0] = _get_apple_active_clang()
 
         # We have to manually substitute out Bazel's macros so clang can parse the command
@@ -206,7 +210,7 @@ def _get_cpp_command_for_files(compile_action: json):
     # Patch command by platform
     args = _all_platform_patch(args)
     args = _apple_platform_patch(args)
-    # Android: Fine as is; no special patching needed.
+    # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(args)
     command = ' '.join(args) # Reformat options as command string
