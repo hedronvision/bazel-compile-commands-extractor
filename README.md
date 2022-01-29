@@ -54,13 +54,13 @@ We'd strongly recommend you set up [Renovate](https://github.com/renovatebot/ren
 
 If not now, maybe come back to this step later, or watch this repo for updates. [Or hey, maybe give us a quick star, while you're thinking about watching.] Like Abseil, we live at head; the latest commit to the main branch is the commit you want.
 
-### Make external code easily browsable.
+### Make external code easily browsable. (also necessary for this tool to function correctly)
 
 From your Bazel workspace root (i.e. `//`), run:
 
 ```ln -s bazel-out/../../../external .```
 
-This makes it easy for you—and for build tooling—to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox. It looks like long ago—and perhaps still inside Google—Bazel automatically created such an `//external` symlink. In any event, it's a win/win to add it: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling. We'd recommend you commit this symlink to your repo so your collaborators have it, too.
+This makes it easy for you—and for build tooling—to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox. It looks like long ago—and perhaps still inside Google—Bazel automatically created such an `//external` symlink. In any event, it's a win/win to add it: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling. We'd recommend you commit this symlink to your repo so your collaborators have it, too, because they'll need it for this tool to work.
 
 ### Get the extractor running.
 
