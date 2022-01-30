@@ -195,6 +195,12 @@ def _all_platform_patch(compile_args: List[str]):
     # Seems to have disappeared when we switched to aquery from action_listeners, but we'll leave it in until the bug is patched in case we start using C++ modules
     compile_args = (arg for arg in compile_args if not arg.startswith('-fmodules-cache-path=bazel-out/'))
 
+    # When Bazel builds with gcc it adds -fno-canonical-system-headers to
+    # the command line, which clang does not understand.  See
+    # https://github.com/hedronvision/bazel-compile-commands-extractor/issues/21
+    # and https://github.com/clangd/clangd/issues/1004.
+    compile_args = (arg for arg in compile_args if not arg == '-fno-canonical-system-headers')
+
     # Any other general fixes would go here...
 
     return list(compile_args)
