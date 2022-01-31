@@ -102,9 +102,13 @@ refresh_compile_commands(
 ## Editor Setup — for autocomplete based on compile_commands.json
 
 ### VSCode
-Make sure you have clangd's extension installed and configured.
+Let's get clangd's extension installed and configured.
 
-`code --install-extension llvm-vs-code-extensions.vscode-clangd`
+```
+code --install-extension llvm-vs-code-extensions.vscode-clangd
+# We also need make sure that Microsoft's C++ extension is not involved and interfering.
+code --uninstall-extension ms-vscode.cpptools
+```
 
 Then, open VSCode user settings.
 
@@ -127,7 +131,7 @@ You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the 
 
 ### Other Editors
 
-If you're using another editor, you'll need to follow the same rough steps as above: get clangd set up to extend the editor and then supply the flags.
+If you're using another editor, you'll need to follow the same rough steps as above: [get clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the flags.
 
 Once you've succeeded in setting up another editor—or set up clangtidy, or otherwise seen a way to improve this tool—we'd love it if you'd contribute what you know!
 
