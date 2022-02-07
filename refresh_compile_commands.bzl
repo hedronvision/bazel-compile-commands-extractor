@@ -41,17 +41,33 @@ def refresh_compile_commands(name, targets = None):
     elif type(targets) != "dict": # Assume they've supplied a single string/label and wrap it 
         targets = {targets: ""}
     
-    _refresh_compile_commands(name = name, labels_to_flags = targets)
-
+    _refresh_compile_commands(
+        name = name,
+        labels_to_flags = targets,
+        script_template = select({
+            "@platforms//os:windows": ":refresh.bat.template",
+            "//conditions:default": ":refresh.sh.template",
+        }),
+        script_suffix = select({
+            "@platforms//os:windows": ".bat",
+            "//conditions:default": ".sh",
+        }),
+        function_call = select({
+            "@platforms//os:windows": "call :GET_COMMANDS",
+            "//conditions:default": "get_commands",
+        }),
+    )
 
 def _refresh_compile_commands_impl(ctx):
     # Inject targets of interest into refresh.sh.template, and set it up to be run.
-    script = ctx.actions.declare_file(ctx.attr.name + ".sh")
+    script = ctx.actions.declare_file(ctx.attr.name + ctx.attr.script_suffix)
     ctx.actions.expand_template(
         output = script,
         is_executable = True,
-        template = ctx.file._script_template,
-        substitutions = {"{get_commands}": "\n".join(["get_commands %s %s" % p for p in ctx.attr.labels_to_flags.items()])}
+        template = ctx.file.script_template,
+        substitutions = {
+            "{get_commands}": "\n".join([ctx.attr.function_call + " %s %s" % p for p in ctx.attr.labels_to_flags.items()])
+        },
     )
     return DefaultInfo(executable = script)
 
@@ -59,7 +75,9 @@ _refresh_compile_commands = rule(
     executable = True,
     attrs = {
         "labels_to_flags": attr.string_dict(mandatory = True), # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
-        "_script_template": attr.label(allow_single_file = True, default = "refresh.sh.template")
+        "script_template": attr.label(allow_single_file = True, default = "refresh.sh.template"),
+        "script_suffix": attr.string(default = ".sh"),
+        "function_call": attr.string(default = "get_commands"),
     },
-    implementation = _refresh_compile_commands_impl
+    implementation = _refresh_compile_commands_impl,
 )

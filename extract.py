@@ -38,6 +38,11 @@ def _get_headers(compile_args: List[str], source_path_for_sanity_check: Optional
 
     Relatively slow. Requires running the C preprocessor.
     """
+    if os.name == 'nt':
+        # Windows has no way to generate makefile headers from CL command line.
+        # However, without headers the clangd managed to work somehow.
+        return []
+
     # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/123)
     # Runs a modified version of the compile command to piggyback on the compiler's preprocessing and header searching.
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
@@ -187,6 +192,16 @@ def _apple_platform_patch(compile_args: List[str]):
     return compile_args
 
 
+def _win_platform_patch(compile_args: List[str]):
+    """The compiler path needs to be qouted in case of spaces in path, which is quite common on Windows.
+
+    This function adds qouts to the first element of the args.
+    """
+    compile_args = list(compile_args)
+    if os.name == 'nt':
+        compile_args[0] = '"' + compile_args[0] + '"'
+    return compile_args
+
 def _all_platform_patch(compile_args: List[str]):
     """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
     # clangd writes module cache files to the wrong place
@@ -215,6 +230,7 @@ def _get_cpp_command_for_files(compile_action: json):
     # Patch command by platform
     args = _all_platform_patch(args)
     args = _apple_platform_patch(args)
+    args = _win_platform_patch(args)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(args)
