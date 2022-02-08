@@ -33,7 +33,12 @@ refresh_compile_commands(
 """
 
 def refresh_compile_commands(name, targets = None):
-    # Wrapper that converts various acceptable target types into a common format
+    """
+    Wrapper that converts various acceptable target types into a common format
+
+    Args:
+      targets: Optional string/list/dict of targets as specified in the module-docstring.
+    """
     if not targets: # Default to all targets in main workspace
         targets = {"@//...": ""}
     elif type(targets) == "list": # Allow specifying a list of targets w/o arguments
@@ -47,15 +52,17 @@ def refresh_compile_commands(name, targets = None):
 
 
 def _expand_template_impl(ctx):
-    # Inject targets of interest into refresh.template.py, and set it up to be run.
+    """
+    Inject targets of interest into refresh.template.py, and set it up to be run.
+    """
     script = ctx.actions.declare_file(ctx.attr.name)
     ctx.actions.expand_template(
         output = script,
         is_executable = True,
         template = ctx.file._script_template,
-        substitutions = {"        # {get_commands}": "\n".join(["        (%r, %r)," % p for p in ctx.attr.labels_to_flags.items()])}
+        substitutions = {"        {get_commands}": "\n".join(["        (%r, %r)," % p for p in ctx.attr.labels_to_flags.items()])}
     )
-    return DefaultInfo(executable = script)
+    return DefaultInfo(files=depset(direct=[script]))
 
 _expand_template = rule(
     attrs = {

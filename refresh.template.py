@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Meant to be run via Bazel by refresh_compile_commands.bzl, not directly. See invocation there. 
 
@@ -229,7 +227,7 @@ def _get_cpp_command_for_files(compile_action: json):
     command = ' '.join(args) # Reformat options as command string
     return source_files, header_files, command
 
-def extract(directory: pathlib.Path, aquery_output):
+def extract(build_workspace_directory: pathlib.Path, aquery_output):
     """
     Input (stdin): jsonproto output from aquery, pre-filtered to (Objective-)C(++)
         compile actions for a given build.
@@ -267,13 +265,15 @@ def extract(directory: pathlib.Path, aquery_output):
                 # execution_root` as the build working directory for
                 # compile_commands...search ImplementationReadme.md to learn why
                 # that breaks.
-                "directory": os.fspath(directory),
+                "directory": os.fspath(build_workspace_directory),
             }
 
 
-# Call with the same flags as `bazel build`, one target per call, followed by flags
-# Yields the entries to compile_commands.json
-def get_commands(directory: pathlib.Path, target: str, flags: str) -> str:
+def get_commands(build_workspace_directory: pathlib.Path, target: str, flags: str) -> str:
+    """
+    Call with the same flags as `bazel build`, one target per call, followed by flags
+    Yields the entries to compile_commands.json
+    """
     # Log clear completion messages
     print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m")
 
@@ -293,7 +293,7 @@ def get_commands(directory: pathlib.Path, target: str, flags: str) -> str:
 
     completed = subprocess.run(
         cmd,
-        cwd=os.fspath(directory),
+        cwd=os.fspath(build_workspace_directory),
         encoding="utf-8",
         errors="replace",
         check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
@@ -316,7 +316,7 @@ def get_commands(directory: pathlib.Path, target: str, flags: str) -> str:
 
     try:
         # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
-        parsed = json.loads(completed.stdout, object_hook=lambda d: SimpleNamespace(**d)),
+        parsed = json.loads(completed.stdout, object_hook=lambda d: SimpleNamespace(**d))
     except json.JSONDecodeError:
         # `bazel aquery` has failed/produced invalid JSON, but we continue as there might be additional
         # `bazel aquery` call targets configured that will succeed.
@@ -324,28 +324,27 @@ def get_commands(directory: pathlib.Path, target: str, flags: str) -> str:
     else:
         # Load aquery's output from the proto data being piped to stdin
         # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
-        yield from extract(directory, parsed)
+        yield from extract(build_workspace_directory, parsed)
 
     # Log clear completion messages
     print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m")
 
 
-def get_all_commands(directory: pathlib.Path) -> typing.Iterable[str]:
+if __name__ == "__main__":
+    commands = list()
+
+    # Get workspace's root so compile_commands.json goes the right place
+    # -- and so we can invoke Bazel on the repo within this script.
+    build_workspace_directory = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+
     args = [
         # Begin: Command template filled by Bazel
-        # {get_commands}
+        {get_commands}
         # End: Command template filled by Bazel
     ]
     for (target, flags) in args:
-        yield from get_commands(directory, target, flags)
-
-
-if __name__ == "__main__":
-    # Get workspace's root so compile_commands.json goes the right place
-    # -- and so we can invoke Bazel on the repo within this script.
-    directory = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
-    commands = get_all_commands(directory)
+        commands.extend(get_commands(build_workspace_directory, target, flags))
 
     # Chain output into compile_commands.json
-    with open(directory / "compile_commands.json", "w") as fob:
-        json.dump(list(commands), fob, indent=2, check_circular=False)
+    with open(build_workspace_directory / "compile_commands.json", "w") as fob:
+        json.dump(commands, fob, indent=2, check_circular=False)
