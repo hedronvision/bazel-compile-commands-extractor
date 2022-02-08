@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 """
+Meant to be run via Bazel by refresh_compile_commands.bzl, not directly. See invocation there. 
+
 As a template, this file helps implement the refresh_compile_commands rule and
 is not part of the user interface.  See ImplementationReadme.md for top-level
 context -- or refresh_compile_commands.bzl for narrower context.
@@ -15,12 +17,12 @@ Interface (after Bazel's template expansion):
   you!) can look at to figure out how files are being compiled by Bazel
 """
 
+import sys
 from types import SimpleNamespace
 import concurrent.futures
 import functools
 import itertools
 import json
-import os
 import os
 import pathlib
 import re
@@ -294,17 +296,35 @@ def get_commands(directory: pathlib.Path, target: str, flags: str) -> str:
         cwd=os.fspath(directory),
         encoding="utf-8",
         errors="replace",
-        check=True,
+        check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
 
-    # Load aquery's output from the proto data being piped to stdin
-    # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
-    yield from extract(
-        directory,
+    # Further hide Bazel build details.
+    for line in completed.stderr.splitlines():
+        # [Deletes both lines of the notification that the build of :extract has completed.]
+        if re.search("Target .*:extract up-to-date:/{N;d;}", line):
+            continue
+
+        # Shushes known warnings about missing graph targets
+        # The missing graph targets are not things we want to introspect anyway, but I filed an issue https://github.com/bazelbuild/bazel/issues/13007
+        if re.search("WARNING: Targets were missing from graph:", line):
+            continue
+
+        print(line, file=sys.stderr)
+
+    try:
         # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
-        json.loads(completed.stdout, object_hook=lambda d: SimpleNamespace(**d)),
-    )
+        parsed = json.loads(completed.stdout, object_hook=lambda d: SimpleNamespace(**d)),
+    except json.JSONDecodeError:
+        # `bazel aquery` has failed/produced invalid JSON, but we continue as there might be additional
+        # `bazel aquery` call targets configured that will succeed.
+        pass
+    else:
+        # Load aquery's output from the proto data being piped to stdin
+        # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
+        yield from extract(directory, parsed)
 
     # Log clear completion messages
     print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m")
@@ -328,4 +348,4 @@ if __name__ == "__main__":
 
     # Chain output into compile_commands.json
     with open(directory / "compile_commands.json", "w") as fob:
-        json.dump(list(commands), fob)
+        json.dump(list(commands), fob, indent=2, check_circular=False)
