@@ -32,13 +32,12 @@ refresh_compile_commands(
 ```
 """
 
-def refresh_compile_commands(name, targets = None):
-    """
-    Wrapper that converts various acceptable target types into a common format
 
-    Args:
-      targets: Optional string/list/dict of targets as specified in the module-docstring.
-    """
+########################################
+# Implementation
+
+def refresh_compile_commands(name, targets = None):
+    # Convert the various, acceptable target shorthands into the dictionary format
     if not targets: # Default to all targets in main workspace
         targets = {"@//...": ""}
     elif type(targets) == "list": # Allow specifying a list of targets w/o arguments
@@ -46,15 +45,14 @@ def refresh_compile_commands(name, targets = None):
     elif type(targets) != "dict": # Assume they've supplied a single string/label and wrap it 
         targets = {targets: ""}
 
+    # Generate runnable python script from template
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets)
-    native.py_binary(name=name, srcs=[script_name])
+    _expand_template(name = script_name, labels_to_flags=targets)
+    native.py_binary(name = name, srcs = [script_name])
 
 
 def _expand_template_impl(ctx):
-    """
-    Inject targets of interest into refresh.template.py, and set it up to be run.
-    """
+    """Inject targets of interest into refresh.template.py, and set it up to be run."""
     script = ctx.actions.declare_file(ctx.attr.name)
     ctx.actions.expand_template(
         output = script,
@@ -62,7 +60,7 @@ def _expand_template_impl(ctx):
         template = ctx.file._script_template,
         substitutions = {"        {get_commands}": "\n".join(["        (%r, %r)," % p for p in ctx.attr.labels_to_flags.items()])}
     )
-    return DefaultInfo(files=depset(direct=[script]))
+    return DefaultInfo(files = depset([script]))
 
 _expand_template = rule(
     attrs = {
