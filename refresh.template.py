@@ -55,16 +55,25 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
         if arg != '-o' and not arg.endswith('.o'))
 
     # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files
+    # Relies on our having made the workspace directory simulate the execroot with //external symlink
     header_cmd = list(header_cmd) + ['--dependencies', '--print-missing-file-dependencies']
 
-    try:
-        headers_makefile_out = subprocess.check_output(header_cmd, encoding='utf-8', cwd=os.environ['BUILD_WORKSPACE_DIRECTORY']) # Relies on our having made the workspace directory simulate the execroot with //external symlink
-    except subprocess.CalledProcessError as e:
-        # Tolerate failure gracefully--during editing the code may not compile!
-        if not e.output: # Worst case, we couldn't get the headers
-            return []
-        headers_makefile_out = e.output # But often, we can get the headers, despite the error
+    header_search_process = subprocess.run(
+        header_cmd,
+        cwd=os.environ["BUILD_WORKSPACE_DIRECTORY"],
+        capture_output=True,
+        encoding='utf-8',
+        check=False, # We explicitly ignore errors and carry on.
+    )
+    headers_makefile_out = header_search_process.stdout
 
+    # Tolerate failure gracefully--during editing the code may not compile!
+    print(header_search_process.stderr, file=sys.stderr, end='') # Captured with capture_output and dumped explicitly to avoid interlaced output.
+    if not headers_makefile_out: # Worst case, we couldn't get the headers,
+        return []
+    # But often, we can get the headers, despite the error.
+
+    # Parse the makefile output.
     split = headers_makefile_out.replace('\\\n', '').split() # Undo shell line wrapping bc it's not consistent (depends on file name length)
     assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Zeroth entry should be the object file. Output:\n" + headers_makefile_out
     assert source_path_for_sanity_check is None or split[1].endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. First entry should be the source file. Output:\n" + headers_makefile_out
