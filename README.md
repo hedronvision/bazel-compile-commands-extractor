@@ -76,7 +76,7 @@ We'll get it running and then move onto the next section while it whirrs away. B
 
 In that case, just `bazel run @hedron_compile_commands//:refresh_all` 
 
-##### 2. Often, though, you'll want to specify the output targets you care about. This avoids issues where some targets can't be built on their own; they need configuration on the command line by a parent rule. android_binaries using transitions to configure android_libraries are an example of the latter.
+##### 2. Often, though, you'll want to specify the output targets you care about. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. android_binaries using transitions to configure android_libraries are an example of the latter.
 
 In that case, you can easily specify the output targets you're working on and the flags needed to build them.
 
@@ -137,7 +137,12 @@ Once you've succeeded in setting up another editor—or set up clangtidy, or oth
 
 ## "Smooth Edges" — what we've enjoyed using this for.
 
-You should now be all set to go! Way to make it through setup. 
+You should now be all set to go! Way to make it through setup.
+
+There should be a compile_commands.json file in the root of your workspace, enabling your editor to provide great, clang-based autocomplete. And you should know what target to `bazel run` to refresh that autocomplete, when you make BUILD-file changes big enough to require a refresh.
+
+Behind the scenes, that compile_commands.json file contains entries describing all the commands used to build every source file in your project. And, for now, there's also one entry per header, describing one way it is compiled. (This gets you great autocomplete in header files, too, so you don't have to think about [clangd's biggest rough edge](https://github.com/clangd/clangd/issues/123)). Crucially, all these commands have been sufficiently de-Bazeled for clang tooling (or you!) to understand them.
+
 
 ### Here's what you should be expecting, based on our experience:
 

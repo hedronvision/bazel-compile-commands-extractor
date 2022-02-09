@@ -1,18 +1,12 @@
 """
-Meant to be run via Bazel by refresh_compile_commands.bzl, not directly. See invocation there. 
+As a template, this file helps implement the refresh_compile_commands rule and is not part of the user interface. See ImplementationReadme.md for top-level context -- or refresh_compile_commands.bzl for narrower context.
 
-As a template, this file helps implement the refresh_compile_commands rule and
-is not part of the user interface.  See ImplementationReadme.md for top-level
-context -- or refresh_compile_commands.bzl for narrower context.
-
-Requires being run under Bazel.
-
-Interface (after Bazel's template expansion):
-- `bazel run` to make autocomplete (and any other clang tooling!) reflect the
-  latest Bazel build files.
-- No arguments are needed; they're baked into the template expansion.
-- Output: a compile_commands.json in the workspace root that clang tooling (or
-  you!) can look at to figure out how files are being compiled by Bazel
+Interface (after template expansion):
+- `bazel run` to regenerate compile_commands.json, so autocomplete (and any other clang tooling!) reflect the latest Bazel build files.
+    - No arguments are needed; they're baked into the template expansion.
+    - Requires being run under Bazel so we can access the workspace root environment variable.
+- Output: a compile_commands.json in the workspace root that clang tooling (or you!) can look at to figure out how files are being compiled by Bazel
+    - Crucially, this output is de-Bazeled; The result is a command that could be run from the workspace root directly, with no Bazel-specific requirements, environment variables, etc.
 """
 
 import concurrent.futures
