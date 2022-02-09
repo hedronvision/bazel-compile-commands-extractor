@@ -222,7 +222,8 @@ def _get_cpp_command_for_files(compile_action):
     command = shlex.join(args) # Reformat options as command string, escaping spaces
     return source_files, header_files, command
 
-def _extract(build_workspace_directory: pathlib.Path, aquery_output):
+
+def _extract(aquery_output):
     """
     Input (stdin): jsonproto output from aquery, pre-filtered to (Objective-)C(++)
         compile actions for a given build.
@@ -257,11 +258,11 @@ def _extract(build_workspace_directory: pathlib.Path, aquery_output):
                 "file": file,
                 "command": command,
                 # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
-                "directory": os.fspath(build_workspace_directory),
+                "directory": os.environ["BUILD_WORKSPACE_DIRECTORY"],
             }
 
 
-def _get_commands(build_workspace_directory: pathlib.Path, target: str, flags: str) -> str:
+def _get_commands(target: str, flags: str):
     """
     Call with the same flags as `bazel build`, one target per call, followed by flags
     Yields the entries to compile_commands.json
@@ -287,7 +288,7 @@ def _get_commands(build_workspace_directory: pathlib.Path, target: str, flags: s
 
     aquery_process = subprocess.run(
         cmd,
-        cwd=os.fspath(build_workspace_directory),
+        cwd=os.environ["BUILD_WORKSPACE_DIRECTORY"],
         capture_output=True,
         encoding='utf-8',
         check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
@@ -313,17 +314,13 @@ def _get_commands(build_workspace_directory: pathlib.Path, target: str, flags: s
 
     # Load aquery's output from the proto data being piped to stdin
     # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
-    yield from _extract(build_workspace_directory, parsed_aquery_output)
+    yield from _extract(parsed_aquery_output)
 
     # Log clear completion messages
     print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m", file=sys.stderr)
 
 
 if __name__ == "__main__":
-    # Get workspace's root so compile_commands.json goes the right place
-    # -- and so we can invoke Bazel on the repo within this script.
-    build_workspace_directory = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
-
     target_flag_pairs = [
         # Begin: Command template filled by Bazel
         {target_flag_pairs}
@@ -331,10 +328,11 @@ if __name__ == "__main__":
     ]
     compile_command_entries = []
     for (target, flags) in target_flag_pairs:
-        compile_command_entries.extend(_get_commands(build_workspace_directory, target, flags))
+        compile_command_entries.extend(_get_commands(target, flags))
 
     # Chain output into compile_commands.json
-    with open(build_workspace_directory / "compile_commands.json", "w") as output_file:
+    workspace_root = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"]) # Set by `bazel run`
+    with open(workspace_root / "compile_commands.json", "w") as output_file:
         json.dump(
             compile_command_entries,
             output_file, 
