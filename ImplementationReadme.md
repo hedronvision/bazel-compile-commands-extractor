@@ -35,19 +35,16 @@ We'd appreciate your joining us in aiming for clarity and ease of expression--by
 
 To get great autocomplete and enable other tooling, we need to get Bazel's understanding of how to compile the code into the compile_commands.json common format that clangd—and other good clang tooling—understands.
 
-The refresh_compile_commands rule (from [refresh_compile_commands.bzl](./refresh_compile_commands.bzl)) drives the process. It constructs a refresh.sh script to be run for the targets you've chosen. That script drives the following actions.
+The refresh_compile_commands rule (from [refresh_compile_commands.bzl](./refresh_compile_commands.bzl)) drives the process. It constructs a `refresh.py` script from [refresh.template.py](./refresh.template.py) to be run for the targets you've chosen. That script drives the following actions.
 
 1. We ask Bazel which compile commands it plans to issue during build actions using [aquery ("action query")](https://docs.bazel.build/versions/master/aquery.html).
-2. We then reformat each of those into compile_commands.json entries clangd understands with [extract.py](./extract.py).
+2. We then reformat each of those into compile_commands.json entries clangd understands.
 3. Clangd then works with VSCode to provide a nice editing experience.
 
 
 ## Code Layout
 
-[refresh.sh.template](./refresh.sh.template) is the main driver of actions. Browsing it should help you figure out where you want to go.
-
-But, if you're looking to jump more directly:
-- [extract.py](./extract.py) does the actual reformatting of command so they're usable by clangd. This is more involved than you might think, but not crazy. It's easy to extend the reformatting operations applied.
+- [refresh.template.py](./refresh.template.py) is the main driver of actions. Browsing it should help you figure out where you want to go. It consists of two sections: one for calling `bazel aquery` and one for constructing the `compile_commands.json` from it. The latter does the actual reformatting of command so they're usable by clangd. This is more involved than you might think, but not crazy. It's easy to extend the reformatting operations applied.
   - If you're seeing failures on a new platform, weird entries in compile_commands, or wrapped compilers, this is where you should make changes to properly undo Bazel's wrapping of the command. See the "Patch command by platform" section.
 - The bazel files ([refresh_compile_commands.bzl](./refresh_compile_commands.bzl) and others) are just wrappings. They're less likely to require your attention.
 
@@ -84,7 +81,7 @@ This means that fancy things like specifying environment variables in the comman
 
 clangd also tries to introspect the compiler specified to figure out what include paths it adds implicitly. Usually it just checks the relative path, following clang (and maybe others') conventions. Iff you use the --query-driver flag it will directly invoke the compiler and ask it about those includes [[issue about making query driver automatic, which it really should be](https://github.com/clangd/clangd/issues/539)]. If you don't specify --query-driver and it can't find the includes at the relative path (like in the case of Bazel's compiler wrappers) it will miss those default includes. If you're seeing red squigglies under, e.g., standard library headers or system headers that should be included by default, you've probably run into a failure of this type.
 
-All this means it's crucial to de-Bazel the command we write to compile_commands.json so clangd can parse it. No compiler driver wrappers, Bazel-specific environment variable expansion, etc. All this happens in [extract.py](./extract.py), details there.
+All this means it's crucial to de-Bazel the command we write to compile_commands.json so clangd can parse it. No compiler driver wrappers, Bazel-specific environment variable expansion, etc. All this happens in [refresh.template.py](./refresh.template.py), details there.
 
 If you see warning messages like "compilation failed" and "index may be incomplete" for almost all entries in the clangd log (view in VSCode under Output>clangd), it's because clangd is misparsing the command in a way that breaks its ability to understand things. A few messages like this are fine; they come from (poorly-designed) headers that depend on include order. (See also note about this in https://github.com/hedronvision/bazel-compile-commands-extractor/issues/2].)
 
@@ -126,7 +123,7 @@ This points into the accumulating cache under the output base, where external co
 
 [Linking via `bazel-<WORKSPACE_DIRECTORY_NAME>/../../external` would also have been okay, since it points to the same place, but would have broken if the workspace directory name changed and seemed less clean semantically.]
 
-Another good option would be having [extract.py](./extract.py) patch external paths, rather than pointing through a symlink. It could prepend paths starting with "external/" with the path of the symlink to get equivalent behavior. We only because it's also a handy way to browse the source code of external dependencies. 
+Another good option would be having [refresh.template.py](./refresh.template.py) patch external paths, rather than pointing through a symlink. It could prepend paths starting with "external/" with the path of the symlink to get equivalent behavior. We only because it's also a handy way to browse the source code of external dependencies. 
 
 It looks like long ago--and perhaps still inside Google—Bazel created such an `//external` symlink. Tulsi, Bazel's XCode helper, once needed the `//external` symlink in the workspace to properly pick up external dependencies. This is no longer true, though you can see some of the history [here](https://github.com/bazelbuild/tulsi/issues/164). 
 

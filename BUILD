@@ -13,10 +13,4 @@ refresh_compile_commands(
 # Implementation:
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
-exports_files(["refresh.sh.template"]) # For implicit use by refresh_compile_commands.
-
-# :extract is meant to be called from Refresh.sh. Work off the invocation there.
-py_binary(
-    name = "extract",
-    srcs = ["extract.py"],
-)
+exports_files(["refresh.template.py"]) # For implicit use by refresh_compile_commands.
