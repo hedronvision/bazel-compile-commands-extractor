@@ -206,7 +206,7 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return list(compile_args)
 
 
-def _get_cpp_command_for_files(compile_action: json):
+def _get_cpp_command_for_files(compile_action):
     """Reformat compile_action into a command clangd can understand.
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
@@ -222,7 +222,7 @@ def _get_cpp_command_for_files(compile_action: json):
     command = shlex.join(args) # Reformat options as command string, escaping spaces
     return source_files, header_files, command
 
-def extract(build_workspace_directory: pathlib.Path, aquery_output):
+def _extract(build_workspace_directory: pathlib.Path, aquery_output):
     """
     Input (stdin): jsonproto output from aquery, pre-filtered to (Objective-)C(++)
         compile actions for a given build.
@@ -256,90 +256,88 @@ def extract(build_workspace_directory: pathlib.Path, aquery_output):
             yield {
                 "file": file,
                 "command": command,
-                # Bazel gotcha warning: If you were tempted to use `bazel info
-                # execution_root` as the build working directory for
-                # compile_commands...search ImplementationReadme.md to learn why
-                # that breaks.
+                # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
                 "directory": os.fspath(build_workspace_directory),
             }
 
 
-def get_commands(build_workspace_directory: pathlib.Path, target: str, flags: str) -> str:
+def _get_commands(build_workspace_directory: pathlib.Path, target: str, flags: str) -> str:
     """
     Call with the same flags as `bazel build`, one target per call, followed by flags
     Yields the entries to compile_commands.json
     """
     # Log clear completion messages
-    print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m")
+    print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m", file=sys.stderr)
+
 
     # Queries Bazel's C-family compile actions, and runs them through our extract.py reformatter
     # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
     # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
-    # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
 
     cmd = [
         "bazel",
         "aquery",
         f"mnemonic('(Objc|Cpp)Compile',deps({target}))",
+        # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
+        "--output=jsonproto",
+        # Shush logging. Just for readability.
         "--ui_event_filters=-info",
         "--noshow_progress",
-        "--output=jsonproto",
     ] + shlex.split(flags)
 
-    completed = subprocess.run(
+    aquery_process = subprocess.run(
         cmd,
         cwd=os.fspath(build_workspace_directory),
-        encoding="utf-8",
-        errors="replace",
+        capture_output=True,
+        encoding='utf-8',
         check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
     )
 
-    # Further hide Bazel build details.
-    for line in completed.stderr.splitlines():
-        # [Deletes both lines of the notification that the build of :extract has completed.]
-        if re.search("Target .*:extract up-to-date:/{N;d;}", line):
-            continue
-
-        # Shushes known warnings about missing graph targets
-        # The missing graph targets are not things we want to introspect anyway, but I filed an issue https://github.com/bazelbuild/bazel/issues/13007
-        if re.search("WARNING: Targets were missing from graph:", line):
+    # Filter aquery error messages to just those the user should care about.
+    for line in aquery_process.stderr.splitlines():
+        # Shush known warnings about missing graph targets.
+        # The missing graph targets are not things we want to introspect anyway.
+        # Tracking issue https://github.com/bazelbuild/bazel/issues/13007.
+        if line.startswith("WARNING: Targets were missing from graph:"):
             continue
 
         print(line, file=sys.stderr)
 
     try:
         # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
-        parsed = json.loads(completed.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
+        parsed_aquery_output = json.loads(aquery_process.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
     except json.JSONDecodeError:
-        # `bazel aquery` has failed/produced invalid JSON, but we continue as there might be additional
-        # `bazel aquery` call targets configured that will succeed.
-        pass
-    else:
-        # Load aquery's output from the proto data being piped to stdin
-        # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
-        yield from extract(build_workspace_directory, parsed)
+        print("aquery failed. Command:", shlex.join(cmd), file=sys.stderr)
+        print(f"\033[0;32m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
+        return
+
+    # Load aquery's output from the proto data being piped to stdin
+    # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
+    yield from _extract(build_workspace_directory, parsed_aquery_output)
 
     # Log clear completion messages
-    print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m")
+    print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m", file=sys.stderr)
 
 
 if __name__ == "__main__":
-    commands = list()
-
     # Get workspace's root so compile_commands.json goes the right place
     # -- and so we can invoke Bazel on the repo within this script.
     build_workspace_directory = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"])
 
-    args = [
+    target_flag_pairs = [
         # Begin: Command template filled by Bazel
-        {get_commands}
+        {target_flag_pairs}
         # End: Command template filled by Bazel
     ]
-    for (target, flags) in args:
-        commands.extend(get_commands(build_workspace_directory, target, flags))
+    compile_command_entries = []
+    for (target, flags) in target_flag_pairs:
+        compile_command_entries.extend(_get_commands(build_workspace_directory, target, flags))
 
     # Chain output into compile_commands.json
-    with open(build_workspace_directory / "compile_commands.json", "w") as fob:
-        json.dump(commands, fob, indent=2, check_circular=False)
+    with open(build_workspace_directory / "compile_commands.json", "w") as output_file:
+        json.dump(
+            compile_command_entries,
+            output_file, 
+            indent=2, # Yay, human readability!
+            check_circular=False # For speed.
+        )

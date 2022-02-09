@@ -47,7 +47,7 @@ def refresh_compile_commands(name, targets = None):
 
     # Generate runnable python script from template
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags=targets)
+    _expand_template(name = script_name, labels_to_flags = targets)
     native.py_binary(name = name, srcs = [script_name])
 
 
@@ -58,7 +58,7 @@ def _expand_template_impl(ctx):
         output = script,
         is_executable = True,
         template = ctx.file._script_template,
-        substitutions = {"        {get_commands}": "\n".join(["        (%r, %r)," % p for p in ctx.attr.labels_to_flags.items()])}
+        substitutions = {"        {target_flag_pairs}": "\n".join(["        (%r, %r)," % p for p in ctx.attr.labels_to_flags.items()])} # Note, don't delete whitespace. Correctly doing multiline indenting.
     )
     return DefaultInfo(files = depset([script]))
 
