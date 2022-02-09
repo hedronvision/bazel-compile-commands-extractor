@@ -15,8 +15,6 @@ Interface (after Bazel's template expansion):
   you!) can look at to figure out how files are being compiled by Bazel
 """
 
-import sys
-from types import SimpleNamespace
 import concurrent.futures
 import functools
 import itertools
@@ -26,7 +24,10 @@ import pathlib
 import re
 import shlex
 import subprocess
+import sys
+import types
 import typing
+
 
 # OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
 # There is an optimization that would improve speed. We intentionally haven't done it because it has downsides and we anticipate that this problem will be temporary; clangd improves fast. 
@@ -316,7 +317,7 @@ def get_commands(build_workspace_directory: pathlib.Path, target: str, flags: st
 
     try:
         # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
-        parsed = json.loads(completed.stdout, object_hook=lambda d: SimpleNamespace(**d))
+        parsed = json.loads(completed.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
     except json.JSONDecodeError:
         # `bazel aquery` has failed/produced invalid JSON, but we continue as there might be additional
         # `bazel aquery` call targets configured that will succeed.
