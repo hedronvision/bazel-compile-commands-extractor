@@ -219,7 +219,7 @@ def _get_cpp_command_for_files(compile_action: json):
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(args)
-    command = ' '.join(args) # Reformat options as command string
+    command = shlex.join(args) # Reformat options as command string, escaping spaces
     return source_files, header_files, command
 
 def extract(build_workspace_directory: pathlib.Path, aquery_output):
