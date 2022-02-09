@@ -43,8 +43,8 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
     # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
-    # Strip out existing dependency file generation that could interfere with ours
-    # Clang on Apple doesn't let later flags override earlier ones, unfortunately
+    # Strip out existing dependency file generation that could interfere with ours.
+    # Clang on Apple doesn't let later flags override earlier ones, unfortunately.
     # These flags are prefixed with M for "make", because that's their output format.
     # *-dependencies is the long form. And the output file is traditionally *.d
     header_cmd = (arg for arg in compile_args
