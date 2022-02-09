@@ -273,14 +273,12 @@ def _get_commands(target: str, flags: str):
     # Log clear completion messages
     print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m", file=sys.stderr)
 
-
-    # Queries Bazel's C-family compile actions, and runs them through our extract.py reformatter
-    # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
-    # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
-
+    # First, query Bazel's C-family compile actions for that configured target
     cmd = [
         "bazel",
         "aquery",
+        # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
+        # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
         f"mnemonic('(Objc|Cpp)Compile',deps({target}))",
         # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
         "--output=jsonproto",
