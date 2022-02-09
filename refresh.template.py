@@ -224,24 +224,21 @@ def _get_cpp_command_for_files(compile_action):
 
 
 def _extract(aquery_output):
-    """
-    Input (stdin): jsonproto output from aquery, pre-filtered to (Objective-)C(++)
-        compile actions for a given build.
-    Output (stdout): Corresponding entries for a compile_commands.json, with commas after each entry, describing all ways every file is being compiled.
+    """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
+
+    Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
+    Yields: Corresponding entries for a compile_commands.json, with commas after each entry, describing all ways every file is being compiled.
         Also includes one entry per header, describing one way it is compiled (to work around https://github.com/clangd/clangd/issues/123).
 
-    Crucially, this de-Bazels the compile commands it takes as input, leaving
-    something clangd can understand. The result is a command that could be run from
-    the workspace root directly, with no bazel-specific compiler wrappers,
-    environment variables, etc.
+    Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific environment variables, etc.
     """
 
     # Process each action from Bazelisms -> file paths and their clang commands
-    # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL
+    # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
     with concurrent.futures.ThreadPoolExecutor() as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
-    # Dump em to stdout as compile_commands.json entries
+    # Yield as compile_commands.json entries
     header_file_entries_written = set()
     for source_files, header_files, command in outputs:
         # Only emit one entry per header
@@ -263,10 +260,7 @@ def _extract(aquery_output):
 
 
 def _get_commands(target: str, flags: str):
-    """
-    Call with the same flags as `bazel build`, one target per call, followed by flags
-    Yields the entries to compile_commands.json
-    """
+    """Yields compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
     # Log clear completion messages
     print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m", file=sys.stderr)
 
