@@ -58,7 +58,7 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
     header_cmd = list(header_cmd) + ['--dependencies', '--print-missing-file-dependencies']
 
     try:
-        headers_makefile_out = subprocess.check_output(header_cmd, encoding='utf-8', cwd=os.environ['BUILD_WORKSPACE_DIRECTORY']).rstrip() # Relies on our having made the workspace directory simulate the execroot with //external symlink
+        headers_makefile_out = subprocess.check_output(header_cmd, encoding='utf-8', cwd=os.environ['BUILD_WORKSPACE_DIRECTORY']) # Relies on our having made the workspace directory simulate the execroot with //external symlink
     except subprocess.CalledProcessError as e:
         # Tolerate failure gracefully--during editing the code may not compile!
         if not e.output: # Worst case, we couldn't get the headers
