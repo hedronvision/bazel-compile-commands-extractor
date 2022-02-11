@@ -12,7 +12,9 @@ Interface (after template expansion):
 import sys
 if sys.version_info < (3,7):
     sys.exit("\n\033[91mFATAL ERROR:\033[0m Python 3.7 or later is required. Please update!")
-    # 3.7 compatibility by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
+    # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
+    # When adding things could be cleaner if we had a higher minimum version, please add a commend with  MIN_PY=3.<v>.
+    # Similarly, when upgrading, please search for that MIN_PY= tag. 
 
 
 import concurrent.futures
@@ -220,6 +222,11 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return list(compile_args)
 
 
+def _shlex_join_backport(args: typing.List[str]) -> str:
+    """shlex.join not available until PY_MIN=3.8. Use this instead for now."""
+    return " ".join(shlex.quote(arg) for arg in args)
+
+
 def _get_cpp_command_for_files(compile_action):
     """Reformat compile_action into a command clangd can understand.
 
@@ -233,7 +240,8 @@ def _get_cpp_command_for_files(compile_action):
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(args)
-    return source_files, header_files, args
+    command = _shlex_join_backport(args) # Reformat options as command string, escaping spaces
+    return source_files, header_files, command
 
 
 def _extract(aquery_output):
@@ -259,7 +267,7 @@ def _extract(aquery_output):
 
     # Yield as compile_commands.json entries
     header_file_entries_written = set()
-    for source_files, header_files, args in outputs:
+    for source_files, header_files, command in outputs:
         # Only emit one entry per header
         # This makes the output vastly smaller, which has been a problem for users.
         # e.g. https://github.com/insufficiently-caffeinated/caffeine/pull/577
@@ -272,7 +280,7 @@ def _extract(aquery_output):
         for file in itertools.chain(source_files, header_files):
             yield {
                 "file": file,
-                "arguments": args,
+                "command": command,
                 # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
                 "directory": os.environ["BUILD_WORKSPACE_DIRECTORY"],
             }
@@ -284,7 +292,7 @@ def _get_commands(target: str, flags: str):
     print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m", file=sys.stderr)
 
     # First, query Bazel's C-family compile actions for that configured target
-    cmd = [
+    aquery_args = [
         "bazel",
         "aquery",
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
@@ -298,7 +306,7 @@ def _get_commands(target: str, flags: str):
     ] + shlex.split(flags)
 
     aquery_process = subprocess.run(
-        cmd,
+        aquery_args,
         cwd=os.environ["BUILD_WORKSPACE_DIRECTORY"],
         capture_output=True,
         encoding='utf-8',
@@ -319,7 +327,7 @@ def _get_commands(target: str, flags: str):
         # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
         parsed_aquery_output = json.loads(aquery_process.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
     except json.JSONDecodeError:
-        print("aquery failed. Command:", " ".join(shlex.quote(arg) for arg in cmd), file=sys.stderr)
+        print("aquery failed. Command:", _shlex_join_backport(aquery_args), file=sys.stderr)
         print(f"\033[0;32m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
