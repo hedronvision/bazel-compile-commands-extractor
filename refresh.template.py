@@ -257,11 +257,7 @@ def _extract(aquery_output):
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
     with concurrent.futures.ThreadPoolExecutor(
-        # Default since Python 3.8, but let's make that explicit to avoid
-        # "using very large resources implicitly on many-core machines" with
-        # Python 3.7.
-        # https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
-        max_workers=min(32, (os.cpu_count() or 1) + 4)
+        max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
