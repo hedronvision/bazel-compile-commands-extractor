@@ -9,6 +9,12 @@ Interface (after template expansion):
     - Crucially, this output is de-Bazeled; The result is a command that could be run from the workspace root directly, with no Bazel-specific requirements, environment variables, etc.
 """
 
+import sys
+if sys.version_info < (3,7):
+    sys.exit("\n\033[91mFATAL ERROR:\033[0m Python 3.7 or later is required. Please update!")
+    # 3.7 compatibility by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
+
+
 import concurrent.futures
 import functools
 import itertools
@@ -18,7 +24,6 @@ import pathlib
 import re
 import shlex
 import subprocess
-import sys
 import types
 import typing
 
