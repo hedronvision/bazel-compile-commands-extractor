@@ -314,7 +314,7 @@ def _get_commands(target: str, flags: str):
         # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
         parsed_aquery_output = json.loads(aquery_process.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
     except json.JSONDecodeError:
-        print("aquery failed. Command:", subprocess.list2cmdline(cmd), file=sys.stderr)
+        print("aquery failed. Command:", " ".join(shlex.quote(arg) for arg in cmd), file=sys.stderr)
         print(f"\033[0;32m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
