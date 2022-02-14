@@ -329,7 +329,8 @@ def _get_commands(target: str, flags: str):
 
     # Load aquery's output from the proto data being piped to stdin
     # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
-    yield from _extract(parsed_aquery_output)
+    if parsed_aquery_output: # With no compilation action, we get an empty JSON file. Let's prevent a crash in `_extract()` when no `actions` exist.
+        yield from _extract(parsed_aquery_output)
 
     # Log clear completion messages
     print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m", file=sys.stderr)
