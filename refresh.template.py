@@ -244,7 +244,7 @@ def _get_cpp_command_for_files(compile_action):
     return source_files, header_files, command
 
 
-def _extract(aquery_output):
+def _convert_compile_commands(aquery_output):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
@@ -292,6 +292,7 @@ def _get_commands(target: str, flags: str):
         "bazel",
         "aquery",
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
+        # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
         # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
         f"mnemonic('(Objc|Cpp)Compile',deps({target}))",
         # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
@@ -309,6 +310,7 @@ def _get_commands(target: str, flags: str):
         check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
     )
 
+
     # Filter aquery error messages to just those the user should care about.
     for line in aquery_process.stderr.splitlines():
         # Shush known warnings about missing graph targets.
@@ -319,18 +321,22 @@ def _get_commands(target: str, flags: str):
 
         print(line, file=sys.stderr)
 
+
+    # Parse proto output from aquery
     try:
-        # object_hook allows object.member syntax, just like a proto, while avoiding the protobuf dependency
+        # object_hook -> SimpleNamespace allows object.member syntax, like a proto, while avoiding the protobuf dependency
         parsed_aquery_output = json.loads(aquery_process.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
+        # Further mimic a proto by protecting against the case where there are no actions found.
+        # Otherwise, SimpleNamespace, unlike a real proto, won't create an actions attribute, leading to an AttributeError on access.
+        if not hasattr(parsed_aquery_output, "actions"):
+            parsed_aquery_output.actions = []
     except json.JSONDecodeError:
         print("aquery failed. Command:", _shlex_join_backport(aquery_args), file=sys.stderr)
         print(f"\033[0;32m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
-    # Load aquery's output from the proto data being piped to stdin
-    # Proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
-    if parsed_aquery_output: # With no compilation action, we get an empty JSON file. Let's prevent a crash in `_extract()` when no `actions` exist.
-        yield from _extract(parsed_aquery_output)
+    yield from _convert_compile_commands(parsed_aquery_output)
+
 
     # Log clear completion messages
     print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m", file=sys.stderr)
