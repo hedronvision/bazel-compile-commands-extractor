@@ -27,7 +27,7 @@ import re
 import shlex
 import subprocess
 import types
-import typing
+import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 
 
 # OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
