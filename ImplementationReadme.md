@@ -31,6 +31,10 @@ We use some fairly long lines and don't hard wrap at e.g. 80ch. The philosophy i
 
 We'd appreciate your joining us in aiming for clarity and ease of expression--by using line breaks to separate ideas--but not to manually reimplement word wrapping.
 
+### Cleanup Commits
+
+If you see ways to make anything better, we'd really appreciate your help! Unlike other projects that discourage quality improvements, we'd love it if you'd propose changes to leave things even better than you found them.
+
 ## Overall Strategy
 
 To get great autocomplete and enable other tooling, we need to get Bazel's understanding of how to compile the code into the compile_commands.json common format that clangd—and other good clang tooling—understands.
