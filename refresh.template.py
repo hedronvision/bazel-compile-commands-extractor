@@ -29,6 +29,10 @@ import subprocess
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 
+# Backport shlex.join (PY_MIN=3.8)
+if not hasattr(shlex, 'join'):
+    shlex.join = lambda args: ' '.join(shlex.quote(arg) for arg in args)
+
 
 # OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
 # There is an optimization that would improve speed. We intentionally haven't done it because it has downsides and we anticipate that this problem will be temporary; clangd improves fast. 
@@ -222,11 +226,6 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return list(compile_args)
 
 
-def _shlex_join_backport(args: typing.List[str]) -> str:
-    """shlex.join not available until PY_MIN=3.8. Use this instead for now."""
-    return " ".join(shlex.quote(arg) for arg in args)
-
-
 def _get_cpp_command_for_files(compile_action):
     """Reformat compile_action into a command clangd can understand.
 
@@ -240,7 +239,7 @@ def _get_cpp_command_for_files(compile_action):
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(args)
-    command = _shlex_join_backport(args) # Reformat options as command string, escaping spaces
+    command = shlex.join(args) # Reformat options as command string, escaping spaces
     return source_files, header_files, command
 
 
@@ -331,7 +330,7 @@ def _get_commands(target: str, flags: str):
         if not hasattr(parsed_aquery_output, "actions"):
             parsed_aquery_output.actions = []
     except json.JSONDecodeError:
-        print("aquery failed. Command:", _shlex_join_backport(aquery_args), file=sys.stderr)
+        print("aquery failed. Command:", shlex.join(aquery_args), file=sys.stderr)
         print(f"\033[0;32m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
