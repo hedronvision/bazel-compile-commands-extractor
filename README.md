@@ -2,13 +2,9 @@
 
 **What is this project trying to do for me?** 
 
-*First, provide Bazel users cross-platform autocomplete for C++, C, Objective-C, and Objective-C++ (collectively, "the C language family" or "(Objective-)C(++)") to make development more efficient and fun. More generally, export Bazel build actions into the compile_commands.json format that enables great tooling decoupled from Bazel.*
+First, provide Bazel users cross-platform autocomplete for the C language family (C++, C, Objective-C, and Objective-C++), and thereby make development more efficient and fun!
 
-**Status:** *Pretty great with minor rough edges. We use this every day and love it.*
-
-*If there haven't been commits in a while, it's because of stability, not neglect. This is in daily use at Hedron.*
-
-*For everyday use, we'd recommend using this rather than the platform-specific IDE adapters (like Tulsi or ASwB), except the times when you need some platform-editor-specific feature (e.g. Apple's NextStep Interface Builder) that's not ever going to be supported in a cross-platform editor.*
+More generally, export Bazel build actions into the compile_commands.json format that enables great tooling decoupled from Bazel.
 
 ## Usage Visuals
 
@@ -18,6 +14,25 @@
 
 ![clangd help example](https://user-images.githubusercontent.com/7157583/142502357-af9ba056-f9e0-47ce-b69d-57e85dcca458.png)
 
+## Status
+
+Pretty great with only very minor rough edges. We use this every day and love it.
+
+If there haven't been commits in a while, it's because of stability, not neglect. This is in daily use inside Hedron.
+
+For everyday use, we'd recommend using this rather than the platform-specific IDE adapters (like Tulsi or ASwB), except the times when you need some platform-editor-specific feature (e.g. Apple's NextStep Interface Builder) that's not ever going to be supported in a cross-platform editor.
+
+### Outside Testimonials
+
+There are lots of people using this tool. That includes large companies and projects with tricky stacks, like in robotics.
+
+We're including a couple of things they've said. We hope they'll give you enough confidence to give this tool a try, too!
+
+> "Thanks for an awesome tool! Super easy to set up and use."
+— a robotics engineer at Boston Dynamics
+
+> "Thank you for showing so much rigor in what would otherwise be just some uninteresting tooling project. This definitely feels like a passing the baton/torch moment. My best wishes for everything you do in life."
+— author of the previous best tool of this type
 
 ## Usage
 
