@@ -28,6 +28,14 @@ import shlex
 import subprocess
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
+import itertools
+
+def pairwise(iterable):
+    a, b = itertools.tee(iterable)
+    next(b, None)
+    return zip(a, b)
+
+
 
 # Backport shlex.join (PY_MIN=3.8)
 if not hasattr(shlex, 'join'):
@@ -101,7 +109,11 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
 
 def _get_files(compile_args: typing.List[str]):
     """Gets the ([source files], [header files]) clangd should be told the command applies to."""
-    source_files = [arg for arg in compile_args if arg.endswith(_get_files.source_extensions)]
+    source_files = [
+        arg
+        for previous, arg in pairwise(compile_args)
+        if arg.endswith(_get_files.source_extensions) and not previous == "-isystem"
+    ]
 
     assert len(source_files) > 0, f"No sources detected in {compile_args}"
     assert len(source_files) <= 1, f"Multiple sources detected. Might work, but needs testing, and unlikely to be right given bazel. CMD: {compile_args}"
