@@ -68,7 +68,7 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
     # Strip sanitizer ignore lists...so they don't show up in the dependency list.
     # See https://clang.llvm.org/docs/SanitizerSpecialCaseList.html and https://github.com/hedronvision/bazel-compile-commands-extractor/issues/34 for more context.
     header_cmd = (arg for arg in header_cmd
-        if not arg.startswith('-fsanitize-ignorelist='))
+        if not arg.startswith('-fsanitize'))
 
     # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files
     # Relies on our having made the workspace directory simulate the execroot with //external symlink
