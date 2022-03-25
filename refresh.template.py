@@ -14,7 +14,7 @@ if sys.version_info < (3,7):
     sys.exit("\n\033[91mFATAL ERROR:\033[0m Python 3.7 or later is required. Please update!")
     # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
     # When adding things could be cleaner if we had a higher minimum version, please add a commend with  MIN_PY=3.<v>.
-    # Similarly, when upgrading, please search for that MIN_PY= tag. 
+    # Similarly, when upgrading, please search for that MIN_PY= tag.
 
 
 import concurrent.futures
@@ -35,7 +35,7 @@ if not hasattr(shlex, 'join'):
 
 
 # OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
-# There is an optimization that would improve speed. We intentionally haven't done it because it has downsides and we anticipate that this problem will be temporary; clangd improves fast. 
+# There is an optimization that would improve speed. We intentionally haven't done it because it has downsides and we anticipate that this problem will be temporary; clangd improves fast.
     # The simplest would be to only search for headers once per source file.
         # Downside: We could miss headers conditionally included, e.g., by platform.
         # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
@@ -111,11 +111,11 @@ def _get_files(compile_args: typing.List[str]):
     # Ambiguous .h headers need a language specified if they aren't C, or clangd will erroneously assume they are C
     # Will be resolved by https://reviews.llvm.org/D116167. Revert f24fc5e and test when that lands, presumably in clangd14.
     # See also: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/12
-    if (any(header_file.endswith('.h') for header_file in header_files) 
+    if (any(header_file.endswith('.h') for header_file in header_files)
         and not source_files[0].endswith(_get_files.c_source_extensions)
         and all(not arg.startswith('-x') and not arg.startswith('--language') and arg.lower() not in ('-objc', '-objc++') for arg in compile_args)):
         # Insert at front of (non executable) args, because the --language is only supposed to take effect on files listed thereafter
-        compile_args.insert(1, _get_files.extensions_to_language_args[os.path.splitext(source_files[0])[1]]) 
+        compile_args.insert(1, _get_files.extensions_to_language_args[os.path.splitext(source_files[0])[1]])
 
     return source_files, header_files
 # Setup extensions and flags for the whole C-language family.
@@ -186,7 +186,7 @@ def _apple_platform_patch(compile_args: typing.List[str]):
     """
     compile_args = list(compile_args)
     # Bazel internal environment variable fragment that distinguishes Apple platforms that need unwrapping.
-        # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is. 
+        # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is.
     if any('__BAZEL_XCODE_' in arg for arg in compile_args):
         # Undo Bazel's Apple platform compiler wrapping.
         # Bazel wraps the compiler as `external/local_config_cc/wrapped_clang` and exports that wrapped compiler in the proto, and we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     with open(workspace_root / "compile_commands.json", "w") as output_file:
         json.dump(
             compile_command_entries,
-            output_file, 
+            output_file,
             indent=2, # Yay, human readability!
             check_circular=False # For speed.
         )
