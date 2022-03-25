@@ -127,15 +127,16 @@ code --install-extension llvm-vs-code-extensions.vscode-clangd
 code --uninstall-extension ms-vscode.cpptools
 ```
 
-Then, open VSCode user settings.
+Then, open VSCode *user* settings, so things will be automatically set up for all projects you open.
 
-Add the following two, separate entries to `"clangd.arguments"`:
+Add the following three separate entries to `"clangd.arguments"`:
 ```
 --header-insertion=never
 --compile-commands-dir=${workspaceFolder}/
+--query-driver=/**/*
 ```
 (Just copy each as written; VSCode will correctly expand ${workspaceFolder} for each workspace.)
-  -  They get rid of (overzealous) header insertion and are needed to  help it find the compile commands, even when browsing system headers outside the source tree.
+  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause clangd to interrogate Bazel's compiler wrappers to figure out which system headers they include by default.
   -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory by overriding *both* flags in your *workspace* settings
 
 
@@ -145,6 +146,10 @@ Turn on: Clangd: Check Updates
 If afterwards clangd doesn't prompt you to download the actual clangd server binary, hit (CMD/CTRL+SHIFT+P)->Download language Server.
 
 You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the plugin to load. The clangd download should prompt you to do so when it completes.
+
+#### If you work on your repository with others...
+
+... and would like these settings to be automatically applied for your teammates, also add the settings to the VSCode *workspace* settings and then check `.vscode/settings.json` into source control.
 
 ### Other Editors
 
