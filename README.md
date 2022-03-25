@@ -91,9 +91,9 @@ We'll get it running and then move onto the next section while it whirrs away. B
 
 In that case, just `bazel run @hedron_compile_commands//:refresh_all` 
 
-##### 2. Often, though, you'll want to specify the output targets you care about. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. android_binaries using transitions to configure android_libraries are an example of the latter.
+##### 2. Often, though, you'll want to specify the output targets you care about. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. An example of the latter is an android_library, which probably cannot be built independently of the android_binary that configures it.
 
-In that case, you can easily specify the output targets you're working on and the flags needed to build them.
+In that case, you can easily specify the top-level output targets you're working on and the flags needed to build them.
 
 Open a BUILD file—we'd recommend using (or creating) `//BUILD`—and add something like:
 
@@ -104,11 +104,13 @@ refresh_compile_commands(
     name = "refresh_compile_commands",
 
     # Specify the targets of interest.
-    # For example, specify a dict of targets and their arguments:
+    # For example, specify a dict of targets and any flags required to build.
+    # (No need to add flags already in .bazelrc. They're automatically picked up.)
     targets = {
       "//:my_output_1": "--important_flag1 --important_flag2=true", 
       "//:my_output_2": "",
     },
+    # If you don't need flags, a list of targets is also okay, as is a single target string.
     # For more details, feel free to look into refresh_compile_commands.bzl if you want.
 )
 ```

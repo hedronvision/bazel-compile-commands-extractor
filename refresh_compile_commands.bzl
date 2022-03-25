@@ -13,14 +13,15 @@ refresh_compile_commands(
     # Specify the targets of interest.
         # This will create compile commands entries for all the code compiled by those targets, including transitive dependencies.
         # It's optional, but if you're reading this, you probably want to. 
-    # Usually, you'll want to specify the output targets you care about.
+    # If you're doing this manually, you usually want to just specify the top-level output targets you care about.
         # This avoids issues where some targets can't be built on their own; they need configuration by a parent rule. android_binaries using transitions to configure android_libraries are an example.
     # The targets parameter is forgiving in its inputs.
         # You can specify just one target:
             # targets = "//:my_output_binary_target",
         # Or a list of targets:
             # targets = ["//:my_output_1", "//:my_output_2"],
-        # Or a dict of targets and their arguments:
+        # Or a dict of targets and any flags required to build:
+            # (No need to add flags already in .bazelrc. They're automatically picked up.)
             # targets = {
             #   "//:my_output_1": "--important_flag1 --important_flag2=true", 
             #   "//:my_output_2": "",
