@@ -176,14 +176,6 @@ def _get_apple_DEVELOPER_DIR():
     # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer' from xcode-select -p
     # Traditionally stored in DEVELOPER_DIR environment variable, but not provided.
 
-
-@functools.lru_cache(maxsize=None)
-def _get_apple_active_clang():
-    """Get path to xcode-select'd clang version."""
-    return subprocess.check_output(('xcrun', '--find', 'clang'), encoding='utf-8').rstrip()
-    # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang' from xcrun -f clang
-
-
 def _apple_platform_patch(compile_args: typing.List[str]):
     """De-Bazel the command into something clangd can parse.
 
@@ -193,11 +185,6 @@ def _apple_platform_patch(compile_args: typing.List[str]):
     # Bazel internal environment variable fragment that distinguishes Apple platforms that need unwrapping.
         # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is.
     if any('__BAZEL_XCODE_' in arg for arg in compile_args):
-        # Undo Bazel's Apple platform compiler wrapping.
-        # Bazel wraps the compiler as `external/local_config_cc/wrapped_clang` and exports that wrapped compiler in the proto. However, we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
-        # Removing the wrapper is also important because Bazel's Xcode (but not CommandLineTools) wrapper crashes if you don't specify particular environment variables (replaced below). We'd need the wrapper to be invokable by clangd's --query-driver if we didn't remove the wrapper.
-        compile_args[0] = _get_apple_active_clang()
-
         # We have to manually substitute out Bazel's macros so clang can parse the command
         # Code this mirrors is in https://github.com/bazelbuild/bazel/blob/master/tools/osx/crosstool/wrapped_clang.cc
         # Not complete--we're just swapping out the essentials, because there seems to be considerable turnover in the hacks they have in the wrapper.
