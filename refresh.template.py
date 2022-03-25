@@ -190,8 +190,7 @@ def _apple_platform_patch(compile_args: typing.List[str]):
     if any('__BAZEL_XCODE_' in arg for arg in compile_args):
         # Undo Bazel's Apple platform compiler wrapping.
         # Bazel wraps the compiler as `external/local_config_cc/wrapped_clang` and exports that wrapped compiler in the proto, and we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
-        # It's also important because Bazel's Xcode (but not CommandLineTools) wrapper crashes if you don't specify particular environment variables (replaced below).
-        # When https://github.com/clangd/clangd/issues/123 is resolved, we might be able to remove this line without causing crashes or missing standard library or system framework red squigglies, since clangd is able to work correctly through other wrappers, like the CommandLineTools wrapper or the llvm wrappers. But currently, it's critical for being able to invoking the command to get headers without depending on environment variables. Still, it probably makes sense to leave it so the commands in compile_commands.json are invokable independent of Bazel. 
+        # It's also important because Bazel's Xcode (but not CommandLineTools) wrapper crashes if you don't specify particular environment variables (replaced below), and we need to invoke it in our workaround for https://github.com/clangd/clangd/issues/123.
         compile_args[0] = _get_apple_active_clang()
 
         # We have to manually substitute out Bazel's macros so clang can parse the command
