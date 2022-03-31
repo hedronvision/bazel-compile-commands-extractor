@@ -311,6 +311,8 @@ def _get_commands(target: str, flags: str):
         f"mnemonic('(Objc|Cpp)Compile',deps({target}))",
         # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
         "--output=jsonproto",
+        # We'll disable artifact output for efficiency, since it's large and we don't use them. Small win timewise, but dramatically less json output from aquery.
+        "--include_artifacts=false",
         # Shush logging. Just for readability.
         "--ui_event_filters=-info",
         "--noshow_progress",
