@@ -28,7 +28,6 @@ import shlex
 import subprocess
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
-import itertools
 
 def pairwise(iterable):
     a, b = itertools.tee(iterable)
@@ -112,7 +111,7 @@ def _get_files(compile_args: typing.List[str]):
     source_files = [
         arg
         for previous, arg in pairwise(compile_args)
-        if arg.endswith(_get_files.source_extensions) and not previous == "-isystem"
+        if arg.endswith(_get_files.source_extensions) and previous == "-c"
     ]
 
     assert len(source_files) > 0, f"No sources detected in {compile_args}"
