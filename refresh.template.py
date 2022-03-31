@@ -29,13 +29,6 @@ import subprocess
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 
-def pairwise(iterable):
-    a, b = itertools.tee(iterable)
-    next(b, None)
-    return zip(a, b)
-
-
-
 # Backport shlex.join (PY_MIN=3.8)
 if not hasattr(shlex, 'join'):
     shlex.join = lambda args: ' '.join(shlex.quote(arg) for arg in args)
@@ -108,32 +101,39 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
 
 def _get_files(compile_args: typing.List[str]):
     """Gets the ([source files], [header files]) clangd should be told the command applies to."""
-    source_files = [
-        arg
-        for previous, arg in pairwise(compile_args)
-        if arg.endswith(_get_files.source_extensions) and previous == "-c"
-    ]
-
-    assert len(source_files) > 0, f"No sources detected in {compile_args}"
-    assert len(source_files) <= 1, f"Multiple sources detected. Might work, but needs testing, and unlikely to be right given bazel. CMD: {compile_args}"
+    # Bazel puts the source file being compiled after the -c flag, so we look for the source file there.
+    # This is a strong assumption about Bazel internals, so we're taking special care to check that this condition holds with asserts. That way things don't fail silently if it changes some day.
+        # -c just means compile-only; don't link into a binary. You can definitely have a proper invocation to clang/gcc where the source isn't right after -c, or where -c isn't present at all.
+        # However, parsing the command line this way is our best simple option. The other alternatives seem worse:
+            # You can't just filter the args to those that end with source-file extensions. The problem is that sometimes header search directories have source-file extensions. Horrible, but unfortunately true.
+                # Parsing the clang invocation properly to get the positional file arguments is hard and not future-proof if new flags are added. Consider a new flag -foo. Does it also capture the next argument after it?
+            # You might be tempted to crawl the inputs depset in the aquery output structure, but it's a fair amount of recursive code and there are other erroneous source files there, at least when building for Android in Bazel 5.1. You could fix this by intersecting the set of source files in the inputs with those listed as arguments on the command line, but I can imagine perverse, problematic cases here. It's a lot more code to still have those caveats.
+            # You might be tempted to get the source files out of the action message listed (just) in  aquery --output=text  output, but the message differs for external workspaces and tools. Plus paths with spaces are going to be hard because it's space delimited. You'd have to make even stronger assumptions than the -c.
+                # Concretely, the message usually has the form "action 'Compiling foo.cpp'"" -> foo.cpp. But it also has "action 'Compiling src/tools/launcher/dummy.cc [for tool]'" -> external/bazel_tools/src/tools/launcher/dummy.cc
+                # If we did ever go this route, you can join the output from aquery --output=text and --output=jsonproto by actionKey.
+            # For more context on options and how this came to be, see https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37
+    source_index = compile_args.index('-c') + 1
+    source_file = compile_args[source_index]
+    assert source_file.endswith(_get_files.source_extensions), f"Source file not found after -c in {compile_args}"
+    assert source_index + 1 == len(compile_args) or compile_args[source_index + 1].startswith('-') or not compile_args[source_index + 1].endswith(_get_files.source_extensions), f"Multiple sources detected after -c. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_args}"
 
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and files can just be the single source file. Good opportunity to clean that out.
-    if source_files[0] in _get_files.assembly_source_extensions: # Assembly sources that are not preprocessed can't include headers
-        return source_files, []
-    header_files = _get_headers(compile_args, source_files[0])
+    if source_file in _get_files.assembly_source_extensions: # Assembly sources that are not preprocessed can't include headers
+        return [source_file], []
+    header_files = _get_headers(compile_args, source_file)
 
     # Ambiguous .h headers need a language specified if they aren't C, or clangd will erroneously assume they are C
     # Will be resolved by https://reviews.llvm.org/D116167. Revert f24fc5e and test when that lands, presumably in clangd14.
     # See also: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/12
     if (any(header_file.endswith('.h') for header_file in header_files)
-        and not source_files[0].endswith(_get_files.c_source_extensions)
+        and not source_file.endswith(_get_files.c_source_extensions)
         and all(not arg.startswith('-x') and not arg.startswith('--language') and arg.lower() not in ('-objc', '-objc++') for arg in compile_args)):
         # Insert at front of (non executable) args, because the --language is only supposed to take effect on files listed thereafter
-        compile_args.insert(1, _get_files.extensions_to_language_args[os.path.splitext(source_files[0])[1]])
+        compile_args.insert(1, _get_files.extensions_to_language_args[os.path.splitext(source_file)[1]])
 
-    return source_files, header_files
+    return [source_file], header_files
 # Setup extensions and flags for the whole C-language family.
 _get_files.c_source_extensions = ('.c',)
 _get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C')
