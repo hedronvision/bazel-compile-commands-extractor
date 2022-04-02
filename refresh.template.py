@@ -156,6 +156,13 @@ _get_files.extensions_to_language_args = {
 }
 _get_files.extensions_to_language_args = {ext : flag for exts, flag in _get_files.extensions_to_language_args.items() for ext in exts} # Flatten map for easier use
 
+@functools.lru_cache(maxsize=None)
+def _get_underlying_clang(compiler_command):
+    """Get install path from clang version."""
+    workspace_root = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"]) # Set by `bazel run`
+     # The final line of the clang version contains the install directory for the underlying clang.
+    install_dir = pathlib.Path(subprocess.check_output((workspace_root/compiler_command, '-v'), stderr=subprocess.STDOUT, encoding='utf-8').rstrip().split("\n")[-1].split(" ", 1)[-1])
+    return str(install_dir/"clang")
 
 @functools.lru_cache(maxsize=None)
 def _get_apple_SDKROOT(SDK_name: str):
@@ -187,14 +194,6 @@ def _get_apple_DEVELOPER_DIR():
     # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer' from xcode-select -p
     # Traditionally stored in DEVELOPER_DIR environment variable, but not provided.
 
-
-@functools.lru_cache(maxsize=None)
-def _get_apple_active_clang():
-    """Get path to xcode-select'd clang version."""
-    return subprocess.check_output(('xcrun', '--find', 'clang'), encoding='utf-8').rstrip()
-    # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang' from xcrun -f clang
-
-
 def _apple_platform_patch(compile_args: typing.List[str]):
     """De-Bazel the command into something clangd can parse.
 
@@ -202,12 +201,12 @@ def _apple_platform_patch(compile_args: typing.List[str]):
     """
     compile_args = list(compile_args)
     # Bazel internal environment variable fragment that distinguishes Apple platforms that need unwrapping.
-        # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is.
+    # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is.
     if any('__BAZEL_XCODE_' in arg for arg in compile_args):
         # Undo Bazel's Apple platform compiler wrapping.
         # Bazel wraps the compiler as `external/local_config_cc/wrapped_clang` and exports that wrapped compiler in the proto. However, we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
         # Removing the wrapper is also important because Bazel's Xcode (but not CommandLineTools) wrapper crashes if you don't specify particular environment variables (replaced below). We'd need the wrapper to be invokable by clangd's --query-driver if we didn't remove the wrapper.
-        compile_args[0] = _get_apple_active_clang()
+        compile_args[0] = _get_underlying_clang(compile_args[0])
 
         # We have to manually substitute out Bazel's macros so clang can parse the command
         # Code this mirrors is in https://github.com/bazelbuild/bazel/blob/master/tools/osx/crosstool/wrapped_clang.cc
@@ -222,9 +221,9 @@ def _apple_platform_patch(compile_args: typing.List[str]):
 
     return compile_args
 
-
 def _all_platform_patch(compile_args: typing.List[str]):
     """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
+
     # clangd writes module cache files to the wrong place
     # Without this fix, you get tons of module caches dumped into the VSCode root folder.
     # Filed clangd issue at: https://github.com/clangd/clangd/issues/655
@@ -236,9 +235,15 @@ def _all_platform_patch(compile_args: typing.List[str]):
     # For more context see: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/21
     compile_args = (arg for arg in compile_args if not arg == '-fno-canonical-system-headers')
 
+    # Some toolchains including wrap the compiler in a script and export that wrapped compiler in the proto. However, we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
+    # We'd need the wrapper to be invokable by clangd's --query-driver if we didn't remove the wrapper.
+    compile_args = list(compile_args)
+    if compile_args[0].endswith(".sh"):
+        compile_args[0] = _get_underlying_clang(compile_args[0])
+
     # Any other general fixes would go here...
 
-    return list(compile_args)
+    return compile_args
 
 
 def _get_cpp_command_for_files(compile_action):
