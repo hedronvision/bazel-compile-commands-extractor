@@ -119,7 +119,7 @@ Finally, you'll need to `bazel run :refresh_compile_commands`
 ### VSCode
 Let's get clangd's extension installed and configured.
 
-```
+```Shell
 code --install-extension llvm-vs-code-extensions.vscode-clangd
 # We also need make sure that Microsoft's C++ extension is not involved and interfering.
 code --uninstall-extension ms-vscode.cpptools
@@ -130,7 +130,7 @@ Then, open VSCode *user* settings, so things will be automatically set up for al
 Search for "clangd".
 
 Add the following three separate entries to `"clangd.arguments"`:
-```
+```Shell
 --header-insertion=never
 --compile-commands-dir=${workspaceFolder}/
 --query-driver=/**/*
