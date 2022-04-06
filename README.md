@@ -69,19 +69,11 @@ We'd strongly recommend you set up [Renovate](https://github.com/renovatebot/ren
 
 If not now, maybe come back to this step later, or watch this repo for updates. [Or hey, maybe give us a quick star, while you're thinking about watching.] Like Abseil, we live at head; the latest commit to the main branch is the commit you want.
 
-### Make external code easily browsable. (also necessary for this tool to function correctly)
-
-From your Bazel workspace root (i.e. `//`), run:
-
-```ln -s bazel-out/../../../external .```
-
-This makes it easy for you—and for build tooling—to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox. It looks like long ago—and perhaps still inside Google—Bazel automatically created such an `//external` symlink. In any event, it's a win/win to add it: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling. We'd recommend you commit this symlink to your repo so your collaborators have it, too, because they'll need it for this tool to work.
-
 ### Get the extractor running.
 
-We'll generate a compile_commands.json file in the root of the Bazel workspace (Product/).
+We'll generate a compile_commands.json file in the root of the Bazel workspace.
 
-That file describes how Bazel is compiling all the (Objective-)C(++) files. With the compile commands in a common format, build-system-independent tooling (e.g. clangd autocomplete, clang-tidy linting etc.), can get to work.
+That file describeds how Bazel is compiling all the (Objective-)C(++) files. With the compile commands in a common format, build-system-independent tooling (e.g. clangd autocomplete, clang-tidy linting etc.), can get to work.
 
 We'll get it running and then move onto the next section while it whirrs away. But in the future, every time you want tooling (like autocomplete) to see new BUILD-file changes, rerun the command you chose below! Clangd will automatically pick up the changes.
 
@@ -115,7 +107,6 @@ refresh_compile_commands(
 )
 ```
 
-
 ## Editor Setup — for autocomplete based on compile_commands.json
 
 ### VSCode
@@ -128,6 +119,8 @@ code --uninstall-extension ms-vscode.cpptools
 ```
 
 Then, open VSCode *user* settings, so things will be automatically set up for all projects you open.
+
+Search for "clangd".
 
 Add the following three separate entries to `"clangd.arguments"`:
 ```
@@ -168,13 +161,11 @@ Behind the scenes, that compile_commands.json file contains entries describing a
 
 ### Here's what you should be expecting, based on our experience:
 
-We use this tool every day to develop a cross-platform library for iOS and Android on macOS. Expect Android completion in Android source, macOS in macOS, iOS in iOS, etc. We have people using it on Linux/Ubuntu, too.
+We use this tool every day to develop a cross-platform library for iOS and Android on macOS. Expect Android completion in Android source, macOS in macOS, iOS in iOS, etc. People use it on Linux/Ubuntu and Windows, too.
 
 All the usual clangd features should work. CMD/CTRL+click navigation (or option if you've changed keybindings), smart rename, autocomplete, highlighting etc. Everything you expect in an IDE should be there (because most good IDEs are backed by clangd). As a general principle: If you're choosing tooling that needs to understand a programming language, you want it to be based on a compiler frontend for that language, which clangd does as part of the LLVM/clang project.
 
 Everything should also work for generated files, though you may have to run a build for the generated file to exist.
-
-We haven't yet tested on Windows. Windows might need some patching parallel to that for macOS (in [refresh.template.py](./refresh.template.py)), but it should be a relatively easy adaptation compared to writing things from scratch. If you're trying to use it on Windows, let us know [here](https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8). We'd love to work together to get things working smoothly.
 
 ## Rough Edges
 

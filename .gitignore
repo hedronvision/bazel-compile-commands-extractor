@@ -2,9 +2,10 @@
 .DS_Store
 
 # Bazel
-# Ignore build output symlinks
+# Ignore build output links
 /bazel-*
+/external
 
 # Clangd
 /compile_commands.json
-/.cache
+/.cache/

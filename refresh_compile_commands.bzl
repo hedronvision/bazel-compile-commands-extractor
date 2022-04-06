@@ -37,6 +37,9 @@ refresh_compile_commands(
 ########################################
 # Implementation
 
+load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
+
+
 def refresh_compile_commands(name, targets = None):
     # Convert the various, acceptable target shorthands into the dictionary format
     if not targets: # Default to all targets in main workspace
@@ -59,14 +62,20 @@ def _expand_template_impl(ctx):
         output = script,
         is_executable = True,
         template = ctx.file._script_template,
-        substitutions = {"        {target_flag_pairs}": "\n".join(["        (%r, %r)," % p for p in ctx.attr.labels_to_flags.items()])} # Note, don't delete whitespace. Correctly doing multiline indenting.
+        substitutions = { # Note, don't delete whitespace. Correctly doing multiline indenting.
+            "        {target_flag_pairs}":
+                "\n".join(["        {},".format(pair) for pair in ctx.attr.labels_to_flags.items()]),
+            "        {windows_default_include_paths}":
+                "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]), # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
+        }
     )
     return DefaultInfo(files = depset([script]))
 
 _expand_template = rule(
     attrs = {
         "labels_to_flags": attr.string_dict(mandatory = True), # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
-        "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py")
+        "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
+        "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"), # For Windows INCLUDE
     },
     implementation = _expand_template_impl
 )

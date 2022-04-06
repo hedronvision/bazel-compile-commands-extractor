@@ -13,7 +13,7 @@ import sys
 if sys.version_info < (3,7):
     sys.exit("\n\033[91mFATAL ERROR:\033[0m Python 3.7 or later is required. Please update!")
     # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
-    # When adding things could be cleaner if we had a higher minimum version, please add a commend with  MIN_PY=3.<v>.
+    # When adding things could be cleaner if we had a higher minimum version, please add a comment with MIN_PY=3.<v>.
     # Similarly, when upgrading, please search for that MIN_PY= tag.
 
 
@@ -21,6 +21,7 @@ import concurrent.futures
 import functools
 import itertools
 import json
+import locale
 import os
 import pathlib
 import re
@@ -42,17 +43,12 @@ if not hasattr(shlex, 'join'):
         # Anticipated speedup: ~2x (30s to 15s.)
 
 
-def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: typing.Optional[str] = None):
-    """Gets the headers used by a particular compile command.
+def _get_headers_gcc(compile_args: typing.List[str], source_path_for_sanity_check: typing.Optional[str] = None):
+    """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
 
     Relatively slow. Requires running the C preprocessor.
     """
-    # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/123)
-    # Runs a modified version of the compile command to piggyback on the compiler's preprocessing and header searching.
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
-
-    # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
-        # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
     # Strip out existing dependency file generation that could interfere with ours.
     # Clang on Apple doesn't let later flags override earlier ones, unfortunately.
@@ -71,14 +67,13 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
         if not arg.startswith('-fsanitize'))
 
     # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files
-    # Relies on our having made the workspace directory simulate the execroot with //external symlink
+    # Relies on our having made the workspace directory simulate a complete version of the execroot with //external symlink
     header_cmd = list(header_cmd) + ['--dependencies', '--print-missing-file-dependencies']
 
     header_search_process = subprocess.run(
         header_cmd,
-        cwd=os.environ["BUILD_WORKSPACE_DIRECTORY"],
         capture_output=True,
-        encoding='utf-8',
+        encoding=locale.getpreferredencoding(),
         check=False, # We explicitly ignore errors and carry on.
     )
     headers_makefile_out = header_search_process.stdout
@@ -94,13 +89,101 @@ def _get_headers(compile_args: typing.List[str], source_path_for_sanity_check: t
     assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Zeroth entry should be the object file. Output:\n" + headers_makefile_out
     assert source_path_for_sanity_check is None or split[1].endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. First entry should be the source file. Output:\n" + headers_makefile_out
     headers = split[2:] # Remove .o and source entries (since they're not headers). Verified above
-    headers = list(set(headers)) # Make unique. GCC sometimes emits duplicate entries https://github.com/hedronvision/bazel-compile-commands-extractor/issues/7#issuecomment-975109458
+    headers = set(headers) # Make unique. GCC sometimes emits duplicate entries https://github.com/hedronvision/bazel-compile-commands-extractor/issues/7#issuecomment-975109458
 
     return headers
 
 
+def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
+    """Gets the headers used by a particular compile command that uses msvc argument formatting (including clang-cl.)
+
+    Relatively slow. Requires running the C preprocessor.
+    """
+    # Flags reference here: https://docs.microsoft.com/en-us/cpp/build/reference/compiler-options
+    # Relies on our having made the workspace directory simulate a complete version of the execroot with //external junction
+
+    header_cmd = list(compile_args) + [
+        '/showIncludes', # Print included headers to stderr. https://docs.microsoft.com/en-us/cpp/build/reference/showincludes-list-include-files
+        '/EP', # Preprocess (only, no compilation for speed), writing to stdout where we can easily ignore it instead of a file. https://docs.microsoft.com/en-us/cpp/build/reference/ep-preprocess-to-stdout-without-hash-line-directives
+    ]
+
+    # cl.exe needs the `INCLUDE` environment variable to find the system headers, since they aren't specified in the action command
+    # Bazel neglects to include INCLUDE per action, so we'll do the best we can and infer them from the default (host) cc toolchain.
+        # These are set in https://github.com/bazelbuild/bazel/bloc/master/tools/cpp/windows_cc_configure.bzl. Search INCLUDE.
+        # Bazel should have supplied the environment variables in aquery output but doesn't https://github.com/bazelbuild/bazel/issues/12852
+    # Non-Bazel Windows users would normally configure these by calling vcvars
+        # For more, see https://docs.microsoft.com/en-us/cpp/build/building-on-the-command-line
+    environment = dict(os.environ)
+    environment['INCLUDE'] = os.pathsep.join((
+        # Begin: template filled by Bazel
+        {windows_default_include_paths}
+        # End:   template filled by Bazel
+    ))
+
+    header_search_process = subprocess.run(
+        header_cmd,
+        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        env=environment,
+        encoding=locale.getpreferredencoding(),
+        check=False, # We explicitly ignore errors and carry on.
+    )
+
+    # Based on the locale, `cl.exe` will emit different marker strings. See also https://github.com/ninja-build/ninja/issues/613#issuecomment-885185024 and https://github.com/bazelbuild/bazel/pull/7966.
+    # We can't just set environment['VSLANG'] = "1033" (English) and be done with it, because we can't assume the user has the English language pack installed.
+    include_marker = (
+        'Note: including file:', # English - United States
+        '注意: 包含文件: ', # Chinese - People's Republic of China
+        '注意: 包含檔案:', # Chinese - Taiwan
+        'Poznámka: Včetně souboru:', # Czech
+        'Hinweis: Einlesen der Datei:', # German - Germany
+        'Remarque : inclusion du fichier : ', # French - France
+        'Nota: file incluso ', # Italian - Italy
+        'メモ: インクルード ファイル: ', # Japanese
+        '참고: 포함 파일:', # Korean
+        'Uwaga: w tym pliku: ', # Polish
+        'Observação: incluindo arquivo:', # Portuguese - Brazil
+        'Примечание: включение файла: ', # Russian
+        'Not: eklenen dosya: ', # Turkish
+        'Nota: inclusión del archivo:', # Spanish - Spain (Modern Sort)
+    )
+
+    headers = set() # Make unique. MSVC emits duplicate entries.
+    error_lines = []
+    for line in header_search_process.stderr.splitlines():
+        # Gobble up the header inclusion information...
+        if source_path.endswith('/' + line) or source_path == line: # Munching the source fileneame echoed the first part of the include output
+            continue
+        for marker in include_marker:
+            if line.startswith(marker):
+                headers.add(line[len(marker):].strip())
+                break
+        else:
+            error_lines.append(line)
+    if error_lines: # Output all errors at the end so they aren't interlaced due to concurrency
+        print('\n'.join(error_lines), file=sys.stderr)
+
+    return headers
+
+
+def _get_headers(compile_args: typing.List[str], source_path: str):
+    """Gets the headers used by a particular compile command.
+
+    Relatively slow. Requires running the C preprocessor.
+    """
+    # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/123)
+    # Runs a modified version of the compile command to piggyback on the compiler's preprocessing and header searching.
+
+    # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
+        # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
+
+    if compile_args[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
+        return _get_headers_msvc(compile_args, source_path)
+    return _get_headers_gcc(compile_args, source_path)
+
+
 def _get_files(compile_args: typing.List[str]):
-    """Gets the ([source files], [header files]) clangd should be told the command applies to."""
+    """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
     # Bazel puts the source file being compiled after the -c flag, so we look for the source file there.
     # This is a strong assumption about Bazel internals, so we're taking special care to check that this condition holds with asserts. That way things don't fail silently if it changes some day.
         # -c just means compile-only; don't link into a binary. You can definitely have a proper invocation to clang/gcc where the source isn't right after -c, or where -c isn't present at all.
@@ -112,16 +195,17 @@ def _get_files(compile_args: typing.List[str]):
                 # Concretely, the message usually has the form "action 'Compiling foo.cpp'"" -> foo.cpp. But it also has "action 'Compiling src/tools/launcher/dummy.cc [for tool]'" -> external/bazel_tools/src/tools/launcher/dummy.cc
                 # If we did ever go this route, you can join the output from aquery --output=text and --output=jsonproto by actionKey.
             # For more context on options and how this came to be, see https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37
-    source_index = compile_args.index('-c') + 1
+    compile_only_flag = '/c' if '/c' in compile_args else '-c' # For Windows/msvc support
+    source_index = compile_args.index(compile_only_flag) + 1
     source_file = compile_args[source_index]
-    assert source_file.endswith(_get_files.source_extensions), f"Source file not found after -c in {compile_args}"
-    assert source_index + 1 == len(compile_args) or compile_args[source_index + 1].startswith('-') or not compile_args[source_index + 1].endswith(_get_files.source_extensions), f"Multiple sources detected after -c. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_args}"
+    assert source_file.endswith(_get_files.source_extensions), f"Source file not found after {compile_only_flag} in {compile_args}"
+    assert source_index + 1 == len(compile_args) or compile_args[source_index + 1].startswith('-') or not compile_args[source_index + 1].endswith(_get_files.source_extensions), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_args}"
 
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and files can just be the single source file. Good opportunity to clean that out.
     if source_file in _get_files.assembly_source_extensions: # Assembly sources that are not preprocessed can't include headers
-        return [source_file], []
+        return {source_file}, set()
     header_files = _get_headers(compile_args, source_file)
 
     # Ambiguous .h headers need a language specified if they aren't C, or clangd will erroneously assume they are C
@@ -133,7 +217,7 @@ def _get_files(compile_args: typing.List[str]):
         # Insert at front of (non executable) args, because the --language is only supposed to take effect on files listed thereafter
         compile_args.insert(1, _get_files.extensions_to_language_args[os.path.splitext(source_file)[1]])
 
-    return [source_file], header_files
+    return {source_file}, header_files
 # Setup extensions and flags for the whole C-language family.
 _get_files.c_source_extensions = ('.c',)
 _get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C')
@@ -183,7 +267,7 @@ def _get_apple_platform(compile_args: typing.List[str]):
 @functools.lru_cache(maxsize=None)
 def _get_apple_DEVELOPER_DIR():
     """Get path to xcode-select'd developer directory."""
-    return subprocess.check_output(('xcode-select', '--print-path'), encoding='utf-8').rstrip()
+    return subprocess.check_output(('xcode-select', '--print-path'), encoding=locale.getpreferredencoding()).rstrip()
     # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer' from xcode-select -p
     # Traditionally stored in DEVELOPER_DIR environment variable, but not provided.
 
@@ -191,7 +275,7 @@ def _get_apple_DEVELOPER_DIR():
 @functools.lru_cache(maxsize=None)
 def _get_apple_active_clang():
     """Get path to xcode-select'd clang version."""
-    return subprocess.check_output(('xcrun', '--find', 'clang'), encoding='utf-8').rstrip()
+    return subprocess.check_output(('xcrun', '--find', 'clang'), encoding=locale.getpreferredencoding()).rstrip()
     # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang' from xcrun -f clang
 
 
@@ -276,23 +360,23 @@ def _convert_compile_commands(aquery_output):
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
     # Yield as compile_commands.json entries
-    header_file_entries_written = set()
+    header_files_already_written = set()
     for source_files, header_files, command in outputs:
         # Only emit one entry per header
-        # This makes the output vastly smaller, which has been a problem for users.
+        # This makes the output vastly smaller, since large size has been a problem for users.
         # e.g. https://github.com/insufficiently-caffeinated/caffeine/pull/577
-        # Without this, we emit an entry for each header for each time it is included, which is explosively duplicative--the same reason why C++ compilation is slow and the impetus for the new modules.
+        # Without this, we emit an entry for each header for each time it is included, which is explosively duplicative--the same reason why C++ compilation is slow and the impetus for the new C++ modules.
         # Revert when https://github.com/clangd/clangd/issues/123 is solved, which would remove the need to emit headers, because clangd would take on that work.
-        # If https://github.com/clangd/clangd/issues/681, we'd probably want to find a way to filter to one entry per platform.
-        header_files = [h for h in header_files if h not in header_file_entries_written]
-        header_file_entries_written.update(header_files)
+        # If/when https://github.com/clangd/clangd/issues/681 gets resolved, we'd probably want to find a way to filter to one entry per platform.
+        header_files_not_already_written = header_files - header_files_already_written
+        header_files_already_written |= header_files_not_already_written
 
-        for file in itertools.chain(source_files, header_files):
+        for file in itertools.chain(source_files, header_files_not_already_written):
             yield {
-                "file": file,
-                "command": command,
+                'file': file,
+                'command': command,
                 # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
-                "directory": os.environ["BUILD_WORKSPACE_DIRECTORY"],
+                'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
             }
 
 
@@ -303,26 +387,25 @@ def _get_commands(target: str, flags: str):
 
     # First, query Bazel's C-family compile actions for that configured target
     aquery_args = [
-        "bazel",
-        "aquery",
+        'bazel',
+        'aquery',
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
         # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
         f"mnemonic('(Objc|Cpp)Compile',deps({target}))",
         # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
-        "--output=jsonproto",
+        '--output=jsonproto',
         # We'll disable artifact output for efficiency, since it's large and we don't use them. Small win timewise, but dramatically less json output from aquery.
-        "--include_artifacts=false",
+        '--include_artifacts=false',
         # Shush logging. Just for readability.
-        "--ui_event_filters=-info",
-        "--noshow_progress",
+        '--ui_event_filters=-info',
+        '--noshow_progress',
     ] + shlex.split(flags)
 
     aquery_process = subprocess.run(
         aquery_args,
-        cwd=os.environ["BUILD_WORKSPACE_DIRECTORY"],
         capture_output=True,
-        encoding='utf-8',
+        encoding=locale.getpreferredencoding(),
         check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
     )
 
@@ -332,7 +415,7 @@ def _get_commands(target: str, flags: str):
         # Shush known warnings about missing graph targets.
         # The missing graph targets are not things we want to introspect anyway.
         # Tracking issue https://github.com/bazelbuild/bazel/issues/13007.
-        if line.startswith("WARNING: Targets were missing from graph:"):
+        if line.startswith('WARNING: Targets were missing from graph:'):
             continue
 
         print(line, file=sys.stderr)
@@ -344,11 +427,11 @@ def _get_commands(target: str, flags: str):
         parsed_aquery_output = json.loads(aquery_process.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
         # Further mimic a proto by protecting against the case where there are no actions found.
         # Otherwise, SimpleNamespace, unlike a real proto, won't create an actions attribute, leading to an AttributeError on access.
-        if not hasattr(parsed_aquery_output, "actions"):
+        if not hasattr(parsed_aquery_output, 'actions'):
             parsed_aquery_output.actions = []
     except json.JSONDecodeError:
         print("aquery failed. Command:", shlex.join(aquery_args), file=sys.stderr)
-        print(f"\033[0;32m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
+        print(f"\033[0;31m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
     yield from _convert_compile_commands(parsed_aquery_output)
@@ -358,19 +441,89 @@ def _get_commands(target: str, flags: str):
     print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m", file=sys.stderr)
 
 
-if __name__ == "__main__":
+def _ensure_external_workspaces_link_exists():
+    """Postcondition: Either //external points into Bazel's fullest set of external workspaces in output_base, or we've exited with an error that'll help the user resolve the issue."""
+    is_windows = os.name == 'nt'
+    source = pathlib.Path('external')
+
+    # Traverse into output_base via bazel-out, keeping the workspace position-independent, so it can be moved without rerunning
+    dest = pathlib.Path('bazel-out/../../../external')
+    if is_windows:
+        # On Windows, unfortunately, bazel-out is a junction, and acessing .. of a junction brings you back out the way you came. So we have to resolve bazel-out first. Not position-independent, but I think the best we can do
+        dest = (pathlib.Path('bazel-out').resolve()/'../../../external').resolve()
+
+    # Handle problem cases where //external exists
+    if os.path.lexists(source):
+        # Detect symlinks or Windows junctions
+        # This seemed to be the cleanest way to detect both.
+        # Note that os.path.islink doesn't detect junctions.
+        try:
+            current_dest = os.readlink(source) # MIN_PY=3.9 source.readlink()
+        except OSError:
+            print("\033[0;31m>>> //external already exists, but it isn't a symlink or Windows junction. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.\033[0m", file=sys.stderr) # Don't auto delete in case the user has something important there.
+            exit(1)
+        
+        # Normalize the path for matching
+        # First, workaround a gross case where Windows readlink returns extended path, starting with \\?\, causing the match to fail
+        if is_windows and current_dest.startswith('\\\\?\\'):
+            current_dest = current_dest[4:] # MIN_PY=3.9 stripprefix
+        current_dest = pathlib.Path(current_dest)
+
+        if dest != current_dest:
+            print("\033[0;31m>>> //external links to the wrong place. Automatically deleting and relinking...\033[0m", file=sys.stderr)
+            source.unlink()
+
+    # Create link if it doesn't already exist
+    if not os.path.lexists(source):
+        if is_windows:
+            # We create a junction on Windows because symlinks need more than default permissions (ugh). Without an elevated prompt or a system in developer mode, symlinking would fail with get "OSError: [WinError 1314] A required privilege is not held by the client:"
+            subprocess.run(f'mklink /J "{source}" "{dest}"', check=True, shell=True) # shell required for mklink builtin
+        else:
+            source.symlink_to(dest, target_is_directory=True)
+        print(f"\033[0;32m>>> Automatically added //external workspace link:\n    This link makes it easy for you—and for build tooling—to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox.\n    It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.\033[0m", file=sys.stderr)
+
+
+def _ensure_gitignore_entries():
+    """Postcondition: compile_commands.json and the external symlink are .gitignore'd, if it looks like they're using git."""
+    needed_entries = [
+        '/external', # Differs on Windows vs macOS/Linux, so we can't check it in. Needs to not have trailing / because it's a symlink on macOS/Linux
+        '/bazel-*', # Bazel output symlinks. Same reasons as external.
+        '/compile_commands.json', # Compiled output -> don't check in
+        '/.cache/', # Where clangd puts its indexing work
+    ]
+
+    # Separate operations because Python doesn't have a built in mode for read/write, don't truncate, create, allow seek to beginning of file. 
+    open('.gitignore', 'a').close() # Ensure .gitignore exists
+    with open('.gitignore') as gitignore:
+        lines = [l.rstrip() for l in gitignore]
+    to_add = [e for e in needed_entries if e not in lines]
+    with open('.gitignore', 'w') as gitignore:
+        # Rewriting all the lines solves the case of a missing trailing \n
+        for line in itertools.chain(lines, to_add):
+            gitignore.write(line)
+            gitignore.write('\n')
+    if to_add:
+        print(f"\033[0;32m>>> Automatically added {to_add} to .gitignore to avoid problems.\033[0m", file=sys.stderr)
+
+
+if __name__ == '__main__':
+    workspace_root = pathlib.Path(os.environ['BUILD_WORKSPACE_DIRECTORY']) # Set by `bazel run`
+    os.chdir(workspace_root) # Ensure the working directory is the workspace root. Assumed by future commands.
+
+    _ensure_gitignore_entries()
+    _ensure_external_workspaces_link_exists()
+
     target_flag_pairs = [
-        # Begin: Command template filled by Bazel
+        # Begin: template filled by Bazel
         {target_flag_pairs}
-        # End: Command template filled by Bazel
+        # End:   template filled by Bazel
     ]
     compile_command_entries = []
     for (target, flags) in target_flag_pairs:
         compile_command_entries.extend(_get_commands(target, flags))
 
     # Chain output into compile_commands.json
-    workspace_root = pathlib.Path(os.environ["BUILD_WORKSPACE_DIRECTORY"]) # Set by `bazel run`
-    with open(workspace_root / "compile_commands.json", "w") as output_file:
+    with open('compile_commands.json', 'w') as output_file:
         json.dump(
             compile_command_entries,
             output_file,
