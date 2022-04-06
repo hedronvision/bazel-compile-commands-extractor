@@ -27,9 +27,8 @@ refresh_compile_commands(
             #   "//:my_output_2": "",
             # },
         # If you don't specify a target, that's fine (if it works for you); compile_commands.json will default to containing commands used in building all possible targets. But in that case, just bazel run @hedron_compile_commands//:refresh_all
-        # Wildcard target patterns (..., *, :all) patterns are allowed, like in bazel build:
+        # Wildcard target patterns (..., *, :all) patterns *are* allowed, like in bazel build
             # For more, see https://docs.bazel.build/versions/main/guide.html#specifying-targets-to-build
-)
 ```
 """
 

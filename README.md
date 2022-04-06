@@ -79,9 +79,11 @@ We'll get it running and then move onto the next section while it whirrs away. B
 
 #### There are two common paths:
 
-##### 1. Have a relatively simple codebase, where every target builds without needing any additional configuration?
+##### 1. Have a relatively simple codebase, where every target builds without needing any additional configuration or flags?
 
-In that case, just `bazel run @hedron_compile_commands//:refresh_all` 
+In that case, just `bazel run @hedron_compile_commands//:refresh_all`
+
+Note that you have to `bazel run` this tool, not just `bazel build` it.
 
 ##### 2. Often, though, you'll want to specify the output targets you care about. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. An example of the latter is an android_library, which probably cannot be built independently of the android_binary that configures it.
 
@@ -97,15 +99,20 @@ refresh_compile_commands(
 
     # Specify the targets of interest.
     # For example, specify a dict of targets and any flags required to build.
-    # (No need to add flags already in .bazelrc. They're automatically picked up.)
     targets = {
       "//:my_output_1": "--important_flag1 --important_flag2=true", 
       "//:my_output_2": "",
     },
+    # No need to add flags already in .bazelrc. They're automatically picked up.
     # If you don't need flags, a list of targets is also okay, as is a single target string.
-    # For more details, feel free to look into refresh_compile_commands.bzl if you want.
+    # Wildcard patterns, like //... for everything, *are* allowed here, just like a build.
 )
 ```
+
+(For more details on `refresh_compile_commands`, look at the docs at the top of [refresh_compile_commands.bzl](./refresh_compile_commands.bzl)).
+
+Finally, you'll need to `bazel run :refresh_compile_commands`
+
 
 ## Editor Setup — for autocomplete based on compile_commands.json
 
