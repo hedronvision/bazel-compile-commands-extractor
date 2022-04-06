@@ -30,10 +30,6 @@ import subprocess
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 
-# Backport shlex.join (PY_MIN=3.8)
-if not hasattr(shlex, 'join'):
-    shlex.join = lambda args: ' '.join(shlex.quote(arg) for arg in args)
-
 
 # OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
 # There is an optimization that would improve speed. We intentionally haven't done it because it has downsides and we anticipate that this problem will be temporary; clangd improves fast.
@@ -81,7 +77,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path_for_sanity_chec
     # Tolerate failure gracefully--during editing the code may not compile!
     print(header_search_process.stderr, file=sys.stderr, end='') # Captured with capture_output and dumped explicitly to avoid interlaced output.
     if not headers_makefile_out: # Worst case, we couldn't get the headers,
-        return []
+        return set()
     # But often, we can get the headers, despite the error.
 
     # Parse the makefile output.
@@ -293,20 +289,20 @@ def _all_platform_patch(compile_args: typing.List[str]):
 
 
 def _get_cpp_command_for_files(compile_action):
-    """Reformat compile_action into a command clangd can understand.
+    """Reformat compile_action into a compile command clangd can understand.
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
-    args = compile_action.arguments
+    compile_args = compile_action.arguments
 
     # Patch command by platform
-    args = _all_platform_patch(args)
-    args = _apple_platform_patch(args)
+    compile_args = _all_platform_patch(compile_args)
+    compile_args = _apple_platform_patch(compile_args)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
-    source_files, header_files = _get_files(args)
-    command = shlex.join(args) # Reformat options as command string, escaping spaces
-    return source_files, header_files, command
+    source_files, header_files = _get_files(compile_args)
+
+    return source_files, header_files, compile_args
 
 
 def _convert_compile_commands(aquery_output):
@@ -328,7 +324,7 @@ def _convert_compile_commands(aquery_output):
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
-    for source_files, header_files, command in outputs:
+    for source_files, header_files, compile_command_args in outputs:
         # Only emit one entry per header
         # This makes the output vastly smaller, since large size has been a problem for users.
         # e.g. https://github.com/insufficiently-caffeinated/caffeine/pull/577
@@ -340,8 +336,10 @@ def _convert_compile_commands(aquery_output):
 
         for file in itertools.chain(source_files, header_files_not_already_written):
             yield {
+                # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
                 'file': file,
-                'command': command,
+                # Using `arguments' instead of 'command' because it's now preferred by clangd and because shlex.join doesn't work for windows cmd. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
+                'arguments': compile_command_args,
                 # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
                 'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
             }
@@ -397,7 +395,7 @@ def _get_commands(target: str, flags: str):
         if not hasattr(parsed_aquery_output, 'actions'):
             parsed_aquery_output.actions = []
     except json.JSONDecodeError:
-        print("aquery failed. Command:", shlex.join(aquery_args), file=sys.stderr)
+        print("aquery failed. Command:", aquery_args, file=sys.stderr)
         print(f"\033[0;31m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
