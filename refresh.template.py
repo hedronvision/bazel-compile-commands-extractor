@@ -198,47 +198,14 @@ def _get_files(compile_args: typing.List[str]):
     compile_only_flag = '/c' if '/c' in compile_args else '-c' # For Windows/msvc support
     source_index = compile_args.index(compile_only_flag) + 1
     source_file = compile_args[source_index]
-    assert source_file.endswith(_get_files.source_extensions), f"Source file not found after {compile_only_flag} in {compile_args}"
-    assert source_index + 1 == len(compile_args) or compile_args[source_index + 1].startswith('-') or not compile_args[source_index + 1].endswith(_get_files.source_extensions), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_args}"
+    SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
+    assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found after {compile_only_flag} in {compile_args}"
+    assert source_index + 1 == len(compile_args) or compile_args[source_index + 1].startswith('-') or not compile_args[source_index + 1].endswith(SOURCE_EXTENSIONS), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_args}"
 
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
-    # When that issue is resolved, we can stop looking for headers and files can just be the single source file. Good opportunity to clean that out.
-    if source_file in _get_files.assembly_source_extensions: # Assembly sources that are not preprocessed can't include headers
-        return {source_file}, set()
-    header_files = _get_headers(compile_args, source_file)
-
-    # Ambiguous .h headers need a language specified if they aren't C, or clangd will erroneously assume they are C
-    # Will be resolved by https://reviews.llvm.org/D116167. Revert f24fc5e and test when that lands, presumably in clangd14.
-    # See also: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/12
-    if (any(header_file.endswith('.h') for header_file in header_files)
-        and not source_file.endswith(_get_files.c_source_extensions)
-        and all(not arg.startswith('-x') and not arg.startswith('--language') and arg.lower() not in ('-objc', '-objc++') for arg in compile_args)):
-        # Insert at front of (non executable) args, because the --language is only supposed to take effect on files listed thereafter
-        compile_args.insert(1, _get_files.extensions_to_language_args[os.path.splitext(source_file)[1]])
-
-    return {source_file}, header_files
-# Setup extensions and flags for the whole C-language family.
-_get_files.c_source_extensions = ('.c',)
-_get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C')
-_get_files.objc_source_extensions = ('.m',)
-_get_files.objcpp_source_extensions = ('.mm',)
-_get_files.cuda_source_extensions = ('.cu',)
-_get_files.opencl_source_extensions = ('.cl',)
-_get_files.assembly_source_extensions = ('.s', '.asm')
-_get_files.assembly_needing_c_preprocessor_source_extensions = ('.S',)
-_get_files.source_extensions = _get_files.c_source_extensions + _get_files.cpp_source_extensions + _get_files.objc_source_extensions + _get_files.objcpp_source_extensions + _get_files.cuda_source_extensions + _get_files.opencl_source_extensions + _get_files.assembly_source_extensions + _get_files.assembly_needing_c_preprocessor_source_extensions
-_get_files.extensions_to_language_args = {
-    _get_files.c_source_extensions: '--language=c',
-    _get_files.cpp_source_extensions: '--language=c++',
-    _get_files.objc_source_extensions: '-ObjC',
-    _get_files.objcpp_source_extensions: '-ObjC++',
-    _get_files.cuda_source_extensions: '--language=cuda',
-    _get_files.opencl_source_extensions: '--language=cl',
-    _get_files.assembly_source_extensions: '--language=assembler',
-    _get_files.assembly_needing_c_preprocessor_source_extensions: '--language=assembler-with-cpp',
-}
-_get_files.extensions_to_language_args = {ext : flag for exts, flag in _get_files.extensions_to_language_args.items() for ext in exts} # Flatten map for easier use
+    # When that issue is resolved, we can stop looking for headers and just return the single source file.
+    return {source_file}, _get_headers(compile_args, source_file)
 
 
 @functools.lru_cache(maxsize=None)
