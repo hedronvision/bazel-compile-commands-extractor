@@ -1,6 +1,6 @@
 # Hedron's Compile Commands Extractor for Bazel — User Interface
 
-**What is this project trying to do for me?** 
+**What is this project trying to do for me?**
 
 First, provide Bazel users cross-platform autocomplete for the C language family (C++, C, Objective-C, and Objective-C++), and thereby make development more efficient and fun!
 
@@ -77,15 +77,25 @@ That file describes how Bazel is compiling all the (Objective-)C(++) files. With
 
 We'll get it running and then move onto the next section while it whirrs away. But in the future, every time you want tooling (like autocomplete) to see new BUILD-file changes, rerun the command you chose below! Clangd will automatically pick up the changes.
 
-#### There are two common paths:
+#### There are three common paths:
 
 ##### 1. Have a relatively simple codebase, where every target builds without needing any additional configuration or flags?
 
 In that case, just `bazel run @hedron_compile_commands//:refresh_all`
 
-Note that you have to `bazel run` this tool, not just `bazel build` it.
+Note: you have to `bazel run` this tool, not just `bazel build` it.
 
-##### 2. Often, though, you'll want to specify the output targets you care about. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. An example of the latter is an android_library, which probably cannot be built independently of the android_binary that configures it.
+##### 2. Are there flags, e.g., `--config=Debug --compilation_mode=dbg`, that you apply manually apply to all your builds while developing?
+
+It's fairly important that you supply the flags when running this tool, too, so we can accurately understand the build, where files are being generated, etc.
+
+Append, e.g. `-- --config=Debug --compilation_mode=dbg` to the above.
+
+Note: the extra `--` is not a typo, and functions to pass the flags to this tool when it runs rather than when it builds. Your command should look like:
+
+`bazel run @hedron_compile_commands//:refresh_all -- --config=Debug --compilation_mode=dbg`
+
+##### 3. Often, though, you'll want to specify the output targets you care about and/or what flags they individually need. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. An example of the latter is an android_library, which probably cannot be built independently of the android_binary that configures it.
 
 In that case, you can easily specify the top-level output targets you're working on and the flags needed to build them.
 
@@ -112,7 +122,6 @@ refresh_compile_commands(
 (For more details on `refresh_compile_commands`, look at the docs at the top of [refresh_compile_commands.bzl](./refresh_compile_commands.bzl)).
 
 Finally, you'll need to `bazel run :refresh_compile_commands`
-
 
 ## Editor Setup — for autocomplete based on compile_commands.json
 
@@ -180,7 +189,7 @@ We've self-filed issues for the rough edges we know about and are tracking. We'd
 
 On the other hand, if you've set things up and they're working well, we'd still love to hear from you. Please file a "non-issue" in the issues tab describing your success! We'd love to hear what you're working on, what platforms you're using, and what you're finding most useful. And maybe also toss a star our way so we know it was helpful to you.
 
-We'd also love to work with you on contributions and improvements, of course! Development setup isn't onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md) The codebase is super clean and friendly. Stepping into the code is a fun and efficient way to get the improvements you want.
+We'd also love to work with you on contributions and improvements, of course! Development setup is easy, not onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md) The codebase is super clean and friendly. Stepping into the code is a fun and efficient way to get the improvements you want.
 
 ---
 *Looking for implementation details instead? Want to dive into the codebase?*

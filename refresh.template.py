@@ -3,7 +3,8 @@ As a template, this file helps implement the refresh_compile_commands rule and i
 
 Interface (after template expansion):
 - `bazel run` to regenerate compile_commands.json, so autocomplete (and any other clang tooling!) reflect the latest Bazel build files.
-    - No arguments are needed; they're baked into the template expansion.
+    - No arguments are needed; info from the rule baked into the template expansion.
+        - Any arguments passed are interpreted as arguments needed for the builds being analyzed.
     - Requires being run under Bazel so we can access the workspace root environment variable.
 - Output: a compile_commands.json in the workspace root that clang tooling (or you!) can look at to figure out how files are being compiled by Bazel
     - Crucially, this output is de-Bazeled; The result is a command that could be run from the workspace root directly, with no Bazel-specific requirements, environment variables, etc.
@@ -11,7 +12,7 @@ Interface (after template expansion):
 
 import sys
 if sys.version_info < (3,7):
-    sys.exit("\n\033[91mFATAL ERROR:\033[0m Python 3.7 or later is required. Please update!")
+    sys.exit("\n\033[31mFATAL ERROR:\033[0m Python 3.7 or later is required. Please update!")
     # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
     # When adding things could be cleaner if we had a higher minimum version, please add a comment with MIN_PY=3.<v>.
     # Similarly, when upgrading, please search for that MIN_PY= tag.
@@ -37,6 +38,28 @@ import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
         # Downside: We could miss headers conditionally included, e.g., by platform.
         # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
         # Anticipated speedup: ~2x (30s to 15s.)
+
+
+def _print_header_finding_warning_once():
+    """Gives users context about "compiler errors" while header finding. Namely that we're recovering."""
+    # Shared between platforms
+
+    # Just log once; subsequent messages wouldn't add anything.
+    if _print_header_finding_warning_once.has_logged: return 
+    _print_header_finding_warning_once.has_logged = True
+
+    print("""\033[0;33m>>> While locating the headers you use, we encountered a compiler warning or error.
+    No need to worry; your code doesn't have to compile for this tool to work.
+    However, we'll still print the errors and warnings in case they're helpful for you in fixing them.
+    If the errors are about missing files Bazel should generate:
+        You might want to run a build of your code with --keep_going.
+        That way, everything possible is generated, browsable and indexed for autocomplete.
+    But, if you have *already* built your code successfully:
+        Please make sure you're supplying this tool with the same flags you use to build.
+        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
+        [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
+    Continuing gracefully...\033[0m""",  file=sys.stderr)
+_print_header_finding_warning_once.has_logged = False
 
 
 def _get_headers_gcc(compile_args: typing.List[str], source_path_for_sanity_check: typing.Optional[str] = None):
@@ -75,7 +98,10 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path_for_sanity_chec
     headers_makefile_out = header_search_process.stdout
 
     # Tolerate failure gracefully--during editing the code may not compile!
-    print(header_search_process.stderr, file=sys.stderr, end='') # Captured with capture_output and dumped explicitly to avoid interlaced output.
+    if header_search_process.stderr:
+        _print_header_finding_warning_once()
+        print(header_search_process.stderr, file=sys.stderr, end='') # Captured with capture_output and dumped explicitly to avoid interlaced output.
+
     if not headers_makefile_out: # Worst case, we couldn't get the headers,
         return set()
     # But often, we can get the headers, despite the error.
@@ -157,6 +183,7 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
         else:
             error_lines.append(line)
     if error_lines: # Output all errors at the end so they aren't interlaced due to concurrency
+        _print_header_finding_warning_once()
         print('\n'.join(error_lines), file=sys.stderr)
 
     return headers
@@ -173,9 +200,26 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
     # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
+    # Rather than print a scary compiler error, warn gently 
+    if not os.path.isfile(source_path):
+        if not _get_headers.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
+            _get_headers.has_logged_missing_file_error = True
+            print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_path}
+    It's probably a generated file, and you haven't yet run a build to generate it.
+    That's OK; your code doesn't even have to compile for this tool to work.
+    If you can, though, you might want to run a build of your code.
+        That way everything is generated, browsable and indexed for autocomplete.
+    However, if you have *already* built your code, and generated the missing file...
+        Please make sure you're supplying this tool with the same flags you use to build.
+        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README. 
+        [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
+    Continuing gracefully...\033[0m""",  file=sys.stderr)
+        return set()
+
     if compile_args[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         return _get_headers_msvc(compile_args, source_path)
     return _get_headers_gcc(compile_args, source_path)
+_get_headers.has_logged_missing_file_error = False
 
 
 def _get_files(compile_args: typing.List[str]):
@@ -365,7 +409,7 @@ def _get_commands(target: str, flags: str):
         # Shush logging. Just for readability.
         '--ui_event_filters=-info',
         '--noshow_progress',
-    ] + shlex.split(flags)
+    ] + shlex.split(flags) + sys.argv[1:]
 
     aquery_process = subprocess.run(
         aquery_args,
@@ -396,7 +440,7 @@ def _get_commands(target: str, flags: str):
             parsed_aquery_output.actions = []
     except json.JSONDecodeError:
         print("aquery failed. Command:", aquery_args, file=sys.stderr)
-        print(f"\033[0;31m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
+        print(f"\033[0;33m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
     yield from _convert_compile_commands(parsed_aquery_output)
@@ -435,7 +479,7 @@ def _ensure_external_workspaces_link_exists():
         current_dest = pathlib.Path(current_dest)
 
         if dest != current_dest:
-            print("\033[0;31m>>> //external links to the wrong place. Automatically deleting and relinking...\033[0m", file=sys.stderr)
+            print("\033[0;33m>>> //external links to the wrong place. Automatically deleting and relinking...\033[0m", file=sys.stderr)
             source.unlink()
 
     # Create link if it doesn't already exist
@@ -445,7 +489,9 @@ def _ensure_external_workspaces_link_exists():
             subprocess.run(f'mklink /J "{source}" "{dest}"', check=True, shell=True) # shell required for mklink builtin
         else:
             source.symlink_to(dest, target_is_directory=True)
-        print(f"\033[0;32m>>> Automatically added //external workspace link:\n    This link makes it easy for you—and for build tooling—to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox.\n    It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.\033[0m", file=sys.stderr)
+        print(f"""\033[0;32m>>> Automatically added //external workspace link:
+    This link makes it easy for you—and for build tooling—to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox.
+    It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.\033[0m""", file=sys.stderr)
 
 
 def _ensure_gitignore_entries():
