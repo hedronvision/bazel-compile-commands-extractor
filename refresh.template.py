@@ -33,11 +33,16 @@ import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 
 
 # OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
-# There is an optimization that would improve speed. We intentionally haven't done it because it has downsides and we anticipate that this problem will be temporary; clangd improves fast.
+# There are some optimization that would improve speed. Here are the ones we've thought of in case we ever want them. But we we anticipate that this problem will be temporary; clangd improves fast.
     # The simplest would be to only search for headers once per source file.
         # Downside: We could miss headers conditionally included, e.g., by platform.
         # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
         # Anticipated speedup: ~2x (30s to 15s.)
+    # A better one would be to cache include information. 
+        # We could check to see if Bazel has cached .d files listing the dependencies and use those instead of preprocessing everything to regenerate them.
+            # If all the files listed in the .d file have older last-modified dates than the .d file itself, this should be safe. We'd want to check that bazel isn't 0-timestamping generated files, though.
+        # We could also write .d files when needed, saving work between runs.
+        # Maybe there's a good way of doing the equivalent on Windows, too, maybe using /sourceDependencies
 
 
 def _print_header_finding_warning_once():
