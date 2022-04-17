@@ -38,7 +38,7 @@ import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
         # Downside: We could miss headers conditionally included, e.g., by platform.
         # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
         # Anticipated speedup: ~2x (30s to 15s.)
-    # A better one would be to cache include information. 
+    # A better one would be to cache include information.
         # We could check to see if Bazel has cached .d files listing the dependencies and use those instead of preprocessing everything to regenerate them.
             # If all the files listed in the .d file have older last-modified dates than the .d file itself, this should be safe. We'd want to check that bazel isn't 0-timestamping generated files, though.
         # We could also write .d files when needed, saving work between runs.
@@ -50,7 +50,7 @@ def _print_header_finding_warning_once():
     # Shared between platforms
 
     # Just log once; subsequent messages wouldn't add anything.
-    if _print_header_finding_warning_once.has_logged: return 
+    if _print_header_finding_warning_once.has_logged: return
     _print_header_finding_warning_once.has_logged = True
 
     print("""\033[0;33m>>> While locating the headers you use, we encountered a compiler warning or error.
@@ -205,7 +205,7 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
     # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
-    # Rather than print a scary compiler error, warn gently 
+    # Rather than print a scary compiler error, warn gently
     if not os.path.isfile(source_path):
         if not _get_headers.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
             _get_headers.has_logged_missing_file_error = True
@@ -216,7 +216,7 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
         That way everything is generated, browsable and indexed for autocomplete.
     However, if you have *already* built your code, and generated the missing file...
         Please make sure you're supplying this tool with the same flags you use to build.
-        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README. 
+        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
         [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
     Continuing gracefully...\033[0m""",  file=sys.stderr)
         return set()
@@ -227,7 +227,7 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
 _get_headers.has_logged_missing_file_error = False
 
 
-def _get_files(compile_args: typing.List[str]):
+def _get_files(compile_args: typing.List[str], emit_headers: bool):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
     # Bazel puts the source file being compiled after the -c flag, so we look for the source file there.
     # This is a strong assumption about Bazel internals, so we're taking special care to check that this condition holds with asserts. That way things don't fail silently if it changes some day.
@@ -250,7 +250,7 @@ def _get_files(compile_args: typing.List[str]):
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and just return the single source file.
-    return {source_file}, _get_headers(compile_args, source_file)
+    return {source_file}, _get_headers(compile_args, source_file) if emit_headers else set()
 
 
 @functools.lru_cache(maxsize=None)
@@ -349,12 +349,12 @@ def _get_cpp_command_for_files(compile_action):
     compile_args = _apple_platform_patch(compile_args)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
-    source_files, header_files = _get_files(compile_args)
+    source_files, header_files = _get_files(compile_args, emit_headers)
 
     return source_files, header_files, compile_args
 
 
-def _convert_compile_commands(aquery_output):
+def _convert_compile_commands(aquery_output, emit_headers: bool, emit_externals: bool):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
@@ -384,17 +384,31 @@ def _convert_compile_commands(aquery_output):
         header_files_already_written |= header_files_not_already_written
 
         for file in itertools.chain(source_files, header_files_not_already_written):
-            yield {
-                # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
-                'file': file,
-                # Using `arguments' instead of 'command' because it's now preferred by clangd and because shlex.join doesn't work for windows cmd. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
-                'arguments': compile_command_args,
-                # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
-                'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
-            }
+            as_path = pathlib.Path(file)
+            # Path relative to workspace root "external/some-bazel-external-workspace/..."
+            # Or, relative to bazel-out/... symlink - rules_foreign_cc rules, for ex, place external headers here when building cmake projects
+            # Or, likely absolute path to bazel external: "/home/.../workspace/external/some-bazel-external-workspace"
+            # Or, any absolute path - assumes this refers to an external file  (/usr/include/... for ex).
+            # superset of the above, breaking out for clarity
+            is_external = not as_path.is_absolute() and as_path.parts[0] == "external" or \
+                not as_path.is_absolute() and as_path.parts[0] in ("bazel-out") or \
+                as_path.is_absolute() and "external" in as_path.parts or \
+                as_path.is_absolute()
+
+            keep = (emit_externals and is_external or not is_external)
+
+            if keep:
+                yield {
+                    # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
+                    'file': file,
+                    # Using `arguments' instead of 'command' because it's now preferred by clangd and because shlex.join doesn't work for windows cmd. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
+                    'arguments': compile_command_args,
+                    # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
+                    'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
+                }
 
 
-def _get_commands(target: str, flags: str):
+def _get_commands(target: str, flags: str, emit_headers: bool, emit_externals: bool):
     """Yields compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
     # Log clear completion messages
     print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m", file=sys.stderr)
@@ -448,7 +462,7 @@ def _get_commands(target: str, flags: str):
         print(f"\033[0;33m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
-    yield from _convert_compile_commands(parsed_aquery_output)
+    yield from _convert_compile_commands(parsed_aquery_output, emit_headers = emit_headers, emit_externals = emit_externals)
 
 
     # Log clear completion messages
@@ -476,7 +490,7 @@ def _ensure_external_workspaces_link_exists():
         except OSError:
             print("\033[0;31m>>> //external already exists, but it isn't a symlink or Windows junction. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.\033[0m", file=sys.stderr) # Don't auto delete in case the user has something important there.
             exit(1)
-        
+
         # Normalize the path for matching
         # First, workaround a gross case where Windows readlink returns extended path, starting with \\?\, causing the match to fail
         if is_windows and current_dest.startswith('\\\\?\\'):
@@ -516,7 +530,7 @@ def _ensure_gitignore_entries():
         ('/.cache/', "# Directory where clangd puts its indexing work"),
     ]
 
-    # Separate operations because Python doesn't have a built in mode for read/write, don't truncate, create, allow seek to beginning of file. 
+    # Separate operations because Python doesn't have a built in mode for read/write, don't truncate, create, allow seek to beginning of file.
     open('.gitignore', 'a').close() # Ensure .gitignore exists
     with open('.gitignore') as gitignore:
         lines = [l.rstrip() for l in gitignore]
@@ -549,9 +563,18 @@ if __name__ == '__main__':
         {target_flag_pairs}
         # End:   template filled by Bazel
     ]
+
+    # Begin: template filled by Bazel
+    emit_headers = {emit_headers}
+    # End:   template filled by Bazel
+
+    # Begin: template filled by Bazel
+    emit_externals = {emit_externals}
+    # End:   template filled by Bazel
+
     compile_command_entries = []
     for (target, flags) in target_flag_pairs:
-        compile_command_entries.extend(_get_commands(target, flags))
+        compile_command_entries.extend(_get_commands(target, flags, emit_headers, emit_externals))
 
     # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:

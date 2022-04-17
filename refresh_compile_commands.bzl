@@ -23,7 +23,7 @@ refresh_compile_commands(
         # Or a dict of targets and any flags required to build:
             # (No need to add flags already in .bazelrc. They're automatically picked up.)
             # targets = {
-            #   "//:my_output_1": "--important_flag1 --important_flag2=true", 
+            #   "//:my_output_1": "--important_flag1 --important_flag2=true",
             #   "//:my_output_2": "",
             # },
         # If you don't specify a target, that's fine (if it works for you); compile_commands.json will default to containing commands used in building all possible targets. But in that case, just bazel run @hedron_compile_commands//:refresh_all
@@ -32,29 +32,27 @@ refresh_compile_commands(
 ```
 """
 
-
 ########################################
 # Implementation
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
-
-def refresh_compile_commands(name, targets = None,
-    **kwargs): # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
-
+def refresh_compile_commands(
+        name,
+        targets = None,
+        **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
-    if not targets: # Default to all targets in main workspace
+    if not targets:  # Default to all targets in main workspace
         targets = {"@//...": ""}
-    elif type(targets) == "list": # Allow specifying a list of targets w/o arguments
+    elif type(targets) == "list":  # Allow specifying a list of targets w/o arguments
         targets = {target: "" for target in targets}
-    elif type(targets) != "dict": # Assume they've supplied a single string/label and wrap it 
+    elif type(targets) != "dict":  # Assume they've supplied a single string/label and wrap it
         targets = {targets: ""}
 
     # Generate runnable python script from template
     script_name = name + ".py"
     _expand_template(name = script_name, labels_to_flags = targets, **kwargs)
     native.py_binary(name = name, srcs = [script_name], **kwargs)
-
 
 def _expand_template_impl(ctx):
     """Inject targets of interest into refresh.template.py, and set it up to be run."""
@@ -63,21 +61,24 @@ def _expand_template_impl(ctx):
         output = script,
         is_executable = True,
         template = ctx.file._script_template,
-        substitutions = { # Note, don't delete whitespace. Correctly doing multiline indenting.
-            "        {target_flag_pairs}":
-                "\n".join(["        {},".format(pair) for pair in ctx.attr.labels_to_flags.items()]),
-            "        {windows_default_include_paths}":
-                "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]), # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
-        }
+        substitutions = {
+            # Note, don't delete whitespace. Correctly doing multiline indenting.
+            "        {target_flag_pairs}": "\n".join(["        {},".format(pair) for pair in ctx.attr.labels_to_flags.items()]),
+            "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
+            "{emit_headers}": str(ctx.attr.emit_headers),
+            "{emit_externals}": str(ctx.attr.emit_externals),
+        },
     )
     return DefaultInfo(files = depset([script]))
 
 _expand_template = rule(
     attrs = {
-        "labels_to_flags": attr.string_dict(mandatory = True), # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
+        "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
+        "emit_headers": attr.bool(default = True, doc = "Include header files in generated compile_commands.json.  Defaults to True"),
+        "emit_externals": attr.bool(default = True, doc = "Include external sources or headers in generated compile_commands.json.  Defaults to True"),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
-        "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"), # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
+        "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),  # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
     },
-    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"], # Needed for find_cpp_toolchain with --incompatible_enable_cc_toolchain_resolution
+    toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],  # Needed for find_cpp_toolchain with --incompatible_enable_cc_toolchain_resolution
     implementation = _expand_template_impl,
 )
