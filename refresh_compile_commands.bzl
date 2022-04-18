@@ -29,6 +29,18 @@ refresh_compile_commands(
         # If you don't specify a target, that's fine (if it works for you); compile_commands.json will default to containing commands used in building all possible targets. But in that case, just bazel run @hedron_compile_commands//:refresh_all
         # Wildcard target patterns (..., *, :all) patterns *are* allowed, like in bazel build
             # For more, see https://docs.bazel.build/versions/main/guide.html#specifying-targets-to-build
+
+    # Optional attributes :
+
+    # Don't generate compile commands entries for headers
+        # This defaults to False - entries will be generated for header files (see https://github.com/clangd/clangd/issues/123 for why)
+    exclude_headers = False
+
+    # Don't generate compile commands entires for external files - sources or headers from external workspaces
+        # Note that any generated files from your workspace in bazel-out, etc. will still be included
+        # This also omits headers from locations outside your workspace, such as /usr/include/...
+        # This defaults to False - entries will be generated for external files
+    exclude_external_workspaces = False
 ```
 """
 
@@ -65,8 +77,8 @@ def _expand_template_impl(ctx):
             # Note, don't delete whitespace. Correctly doing multiline indenting.
             "        {target_flag_pairs}": "\n".join(["        {},".format(pair) for pair in ctx.attr.labels_to_flags.items()]),
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
-            "{emit_headers}": str(ctx.attr.emit_headers),
-            "{emit_externals}": str(ctx.attr.emit_externals),
+            "{exclude_headers}": str(ctx.attr.exclude_headers),
+            "{exclude_external_workspaces}": str(ctx.attr.exclude_external_workspaces),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -74,8 +86,8 @@ def _expand_template_impl(ctx):
 _expand_template = rule(
     attrs = {
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
-        "emit_headers": attr.bool(default = True, doc = "Include header files in generated compile_commands.json.  Defaults to True"),
-        "emit_externals": attr.bool(default = True, doc = "Include external sources or headers in generated compile_commands.json.  Defaults to True"),
+        "exclude_headers": attr.bool(default = False),
+        "exclude_external_workspaces": attr.bool(default = False),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),  # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
     },

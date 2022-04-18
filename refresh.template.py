@@ -19,6 +19,7 @@ if sys.version_info < (3,7):
 
 
 import concurrent.futures
+import dataclasses
 import functools
 import itertools
 import json
@@ -221,13 +222,24 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
     Continuing gracefully...\033[0m""",  file=sys.stderr)
         return set()
 
+
     if compile_args[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
-        return _get_headers_msvc(compile_args, source_path)
-    return _get_headers_gcc(compile_args, source_path)
+        headers = _get_headers_msvc(compile_args, source_path)
+    else:
+        headers = _get_headers_gcc(compile_args, source_path)
+
+    if opts.exclude_external_workspaces:
+        # If the header is from an external workspace, it will start with external/...
+        # If it is an absolute path, it's outside this workspace (/usr/include, etc.)
+        headers = {header for header in headers if not header.startswith("external") and not pathlib.Path(header).is_absolute()}
+
+    return headers
+
+
 _get_headers.has_logged_missing_file_error = False
 
 
-def _get_files(compile_args: typing.List[str], emit_headers: bool):
+def _get_files(compile_args: typing.List[str]):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
     # Bazel puts the source file being compiled after the -c flag, so we look for the source file there.
     # This is a strong assumption about Bazel internals, so we're taking special care to check that this condition holds with asserts. That way things don't fail silently if it changes some day.
@@ -250,7 +262,7 @@ def _get_files(compile_args: typing.List[str], emit_headers: bool):
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and just return the single source file.
-    return {source_file}, _get_headers(compile_args, source_file) if emit_headers else set()
+    return {source_file}, set() if opts.exclude_headers else _get_headers(compile_args, source_file)
 
 
 @functools.lru_cache(maxsize=None)
@@ -349,12 +361,12 @@ def _get_cpp_command_for_files(compile_action):
     compile_args = _apple_platform_patch(compile_args)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
-    source_files, header_files = _get_files(compile_args, emit_headers)
+    source_files, header_files = _get_files(compile_args)
 
     return source_files, header_files, compile_args
 
 
-def _convert_compile_commands(aquery_output, emit_headers: bool, emit_externals: bool):
+def _convert_compile_commands(aquery_output):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
@@ -364,12 +376,23 @@ def _convert_compile_commands(aquery_output, emit_headers: bool, emit_externals:
     Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific environment variables, etc.
     """
 
+    if opts.exclude_external_workspaces:
+        targets = {target.id : target.label for target in aquery_output.targets}
+        # For each action, find its target
+        # If the target starts with @, it's an action for a target in an external workspace
+        # If the target can't be found (not sure if this can happen), just keep the action
+        actions = (action for action in aquery_output.actions if not targets.get(action.targetId, "").startswith("@"))
+
+
+    else:
+        actions = aquery_output.actions
+
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
+        outputs = threadpool.map(_get_cpp_command_for_files, actions)
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
@@ -384,31 +407,17 @@ def _convert_compile_commands(aquery_output, emit_headers: bool, emit_externals:
         header_files_already_written |= header_files_not_already_written
 
         for file in itertools.chain(source_files, header_files_not_already_written):
-            as_path = pathlib.Path(file)
-            # Path relative to workspace root "external/some-bazel-external-workspace/..."
-            # Or, relative to bazel-out/... symlink - rules_foreign_cc rules, for ex, place external headers here when building cmake projects
-            # Or, likely absolute path to bazel external: "/home/.../workspace/external/some-bazel-external-workspace"
-            # Or, any absolute path - assumes this refers to an external file  (/usr/include/... for ex).
-            # superset of the above, breaking out for clarity
-            is_external = not as_path.is_absolute() and as_path.parts[0] == "external" or \
-                not as_path.is_absolute() and as_path.parts[0] in ("bazel-out") or \
-                as_path.is_absolute() and "external" in as_path.parts or \
-                as_path.is_absolute()
-
-            keep = (emit_externals and is_external or not is_external)
-
-            if keep:
-                yield {
-                    # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
-                    'file': file,
-                    # Using `arguments' instead of 'command' because it's now preferred by clangd and because shlex.join doesn't work for windows cmd. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
-                    'arguments': compile_command_args,
-                    # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
-                    'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
-                }
+            yield {
+                # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
+                'file': file,
+                # Using `arguments' instead of 'command' because it's now preferred by clangd and because shlex.join doesn't work for windows cmd. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
+                'arguments': compile_command_args,
+                # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
+                'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
+            }
 
 
-def _get_commands(target: str, flags: str, emit_headers: bool, emit_externals: bool):
+def _get_commands(target: str, flags: str):
     """Yields compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
     # Log clear completion messages
     print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m", file=sys.stderr)
@@ -462,7 +471,7 @@ def _get_commands(target: str, flags: str, emit_headers: bool, emit_externals: b
         print(f"\033[0;33m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
         return
 
-    yield from _convert_compile_commands(parsed_aquery_output, emit_headers = emit_headers, emit_externals = emit_externals)
+    yield from _convert_compile_commands(parsed_aquery_output)
 
 
     # Log clear completion messages
@@ -551,6 +560,14 @@ def _ensure_gitignore_entries():
         print(f"\033[0;32m>>> Automatically added entries to .gitignore to avoid problems.\033[0m", file=sys.stderr)
 
 
+@dataclasses.dataclass(frozen=True)
+class Options:
+    exclude_headers: bool = False
+    """Do not add entries for header files in compile_commands.json"""
+
+    exclude_external_workspaces: bool = False
+    """Do not add entries for sources or headers in external workspaces.  Also omits system or other includes with absolute paths"""
+
 if __name__ == '__main__':
     workspace_root = pathlib.Path(os.environ['BUILD_WORKSPACE_DIRECTORY']) # Set by `bazel run`
     os.chdir(workspace_root) # Ensure the working directory is the workspace root. Assumed by future commands.
@@ -564,17 +581,16 @@ if __name__ == '__main__':
         # End:   template filled by Bazel
     ]
 
-    # Begin: template filled by Bazel
-    emit_headers = {emit_headers}
-    # End:   template filled by Bazel
-
-    # Begin: template filled by Bazel
-    emit_externals = {emit_externals}
-    # End:   template filled by Bazel
+    opts = Options(
+        # Begin: template filled by Bazel
+        exclude_headers = {exclude_headers},
+        exclude_external_workspaces = {exclude_external_workspaces},
+        # End:   template filled by Bazel
+    )
 
     compile_command_entries = []
     for (target, flags) in target_flag_pairs:
-        compile_command_entries.extend(_get_commands(target, flags, emit_headers, emit_externals))
+        compile_command_entries.extend(_get_commands(target, flags))
 
     # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:
