@@ -179,7 +179,7 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
     error_lines = []
     for line in header_search_process.stderr.splitlines():
         # Gobble up the header inclusion information...
-        if source_path.endswith('/' + line) or source_path == line: # Munching the source fileneame echoed the first part of the include output
+        if source_path.endswith('/' + line) or source_path == line: # Munching the source filename echoed the first part of the include output
             continue
         for marker in include_marker:
             if line.startswith(marker):
