@@ -382,8 +382,6 @@ def _convert_compile_commands(aquery_output):
         # If the target starts with @, it's an action for a target in an external workspace
         # If the target can't be found (not sure if this can happen), just keep the action
         actions = (action for action in aquery_output.actions if not targets.get(action.targetId, "").startswith("@"))
-
-
     else:
         actions = aquery_output.actions
 
