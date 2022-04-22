@@ -39,7 +39,9 @@ refresh_compile_commands(
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
 
-def refresh_compile_commands(name, targets = None):
+def refresh_compile_commands(name, targets = None,
+    **kwargs): # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
+
     # Convert the various, acceptable target shorthands into the dictionary format
     if not targets: # Default to all targets in main workspace
         targets = {"@//...": ""}
@@ -50,8 +52,8 @@ def refresh_compile_commands(name, targets = None):
 
     # Generate runnable python script from template
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets)
-    native.py_binary(name = name, srcs = [script_name])
+    _expand_template(name = script_name, labels_to_flags = targets, **kwargs)
+    native.py_binary(name = name, srcs = [script_name], **kwargs)
 
 
 def _expand_template_impl(ctx):
