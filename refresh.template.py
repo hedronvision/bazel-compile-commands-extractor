@@ -19,7 +19,7 @@ if sys.version_info < (3,6):
     # When adding things could be cleaner if we had a higher minimum version, please add a comment with MIN_PY=3.<v>.
     # Similarly, when upgrading, please search for that MIN_PY= tag.
 
-
+import argparse
 import concurrent.futures
 import enum
 import functools  # MIN_PY=3.9: Replace `functools.lru_cache(maxsize=None)` with `functools.cache`.
@@ -830,12 +830,12 @@ def _convert_compile_commands(aquery_output):
             }
 
 
-def _get_commands(target: str, flags: str):
+def _get_commands(target: str, flags: str, extra_flags: str=''):
     """Yields compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
     # Log clear completion messages
     log_info(f">>> Analyzing commands used in {target}")
 
-    additional_flags = shlex.split(flags) + sys.argv[1:]
+    additional_flags = shlex.split(flags) + extra_flags
 
     # Detect anything that looks like a build target in the flags, and issue a warning.
     # Note that positional arguments after -- are all interpreted as target patterns. (If it's at the end, then no worries.)
@@ -930,7 +930,7 @@ def _get_commands(target: str, flags: str):
     log_success(f">>> Finished extracting commands for {target}")
 
 
-def _ensure_external_workspaces_link_exists():
+def _ensure_external_workspaces_link_exists(symlink_prefix='bazel-'):
     """Postcondition: Either //external points into Bazel's fullest set of external workspaces in output_base, or we've exited with an error that'll help the user resolve the issue."""
     is_windows = os.name == 'nt'
     source = pathlib.Path('external')
@@ -942,10 +942,10 @@ def _ensure_external_workspaces_link_exists():
         sys.exit(1)
 
     # Traverse into output_base via bazel-out, keeping the workspace position-independent, so it can be moved without rerunning
-    dest = pathlib.Path('bazel-out/../../../external')
+    dest = pathlib.Path(f'{symlink_prefix}out/../../../external')
     if is_windows:
         # On Windows, unfortunately, bazel-out is a junction, and acessing .. of a junction brings you back out the way you came. So we have to resolve bazel-out first. Not position-independent, but I think the best we can do
-        dest = (pathlib.Path('bazel-out').resolve()/'../../../external').resolve()
+        dest = (pathlib.Path(f'{symlink_prefix}out').resolve()/'../../../external').resolve()
 
     # Handle problem cases where //external exists
     if os.path.lexists(source):
@@ -1049,25 +1049,44 @@ def _ensure_cwd_is_workspace_root():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser("bazel-compile-commands-extractor", description="Extract compile_commands.json from Bazel")
+    parser.add_argument("-b", "--bazel-out", default='bazel-', help="Override the default symlink prefix if --symlink_prefix has been specified.")
+    parser.add_argument("-t", "--targets", nargs='*', default=[], help="Override the targets to extract.")
+    args, unparsed = parser.parse_known_args()
+
     _ensure_cwd_is_workspace_root()
     _ensure_gitignore_entries_exist()
-    _ensure_external_workspaces_link_exists()
+    _ensure_external_workspaces_link_exists(args.bazel_out)
 
-    target_flag_pairs = [
-        # Begin: template filled by Bazel
-        {target_flag_pairs}
-        # End:   template filled by Bazel
-    ]
-
+    if not args.targets:
+        target_flag_pairs = [
+            # Begin: template filled by Bazel
+            {target_flag_pairs}
+            # End:   template filled by Bazel
+        ]
+        amend = False
+    else:
+        # override the targets from command line, no flags specified
+        # This will append to compile commands rather than overwrite it.
+        target_flag_pairs = [(t, "") for t in args.targets]
+        amend = True
     compile_command_entries = []
     for (target, flags) in target_flag_pairs:
-        compile_command_entries.extend(_get_commands(target, flags))
+        compile_command_entries.extend(_get_commands(target, flags, unparsed))
 
     if not compile_command_entries:
         log_error(""">>> Not (over)writing compile_commands.json, since no commands were extracted and an empty file is of no use.
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
+    if amend and os.path.exists('compile_commands.json'):
+        # Append to existing compile_commands.json
+        with open('compile_commands.json') as f:
+            existing_entries = json.load(f)
+            # update existing entries with new entries, replace the entries with the same file path
+            updated_file_set = {pathlib.Path(e['file']).resolve() for e in compile_command_entries}
+            old_file_set = {pathlib.Path(e['file']).resolve() for e in existing_entries}
+            compile_command_entries.extend(filter(lambda e: pathlib.Path(e['file']).resolve() not in updated_file_set, existing_entries))
     # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:
         json.dump(
