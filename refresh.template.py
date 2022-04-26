@@ -503,7 +503,7 @@ def _ensure_gitignore_entries():
     """Postcondition: compile_commands.json and the external symlink are .gitignore'd, if it looks like they're using git."""
     needed_entries = [
         '/external', # Differs on Windows vs macOS/Linux, so we can't check it in. Needs to not have trailing / because it's a symlink on macOS/Linux
-        '/bazel-*', # Bazel output symlinks. Same reasons as external.
+        '/bazel-*', # Bazel output symlinks. Same reasons as external. You need the * because people change the name of the directory your repository is in, changing the bazel-<workspace_name> symlink.
         '/compile_commands.json', # Compiled output -> don't check in
         '/.cache/', # Where clangd puts its indexing work
     ]
