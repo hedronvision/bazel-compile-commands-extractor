@@ -502,31 +502,39 @@ def _ensure_external_workspaces_link_exists():
 def _ensure_gitignore_entries():
     """Postcondition: compile_commands.json and the external symlink are .gitignore'd, if it looks like they're using git."""
     # Silently check that we're in a git repo--and no-op if not.
-    if subprocess.run('git rev-parse --git-dir', # see https://stackoverflow.com/questions/2180270/check-if-current-directory-is-a-git-repository
+    if (not os.path.isfile('.gitignore') # Still add to the .gitignore if it exists, even if git isn't installed.
+        and subprocess.run('git rev-parse --git-dir', # see https://stackoverflow.com/questions/2180270/check-if-current-directory-is-a-git-repository
         shell=True, # Unifies error case where git isn't even installed by making it also a non-zero exit code w/ no exception
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        ).returncode: # non-zero indicates not in git repository
+        ).returncode): # non-zero indicates not in git repository
         return
 
-    needed_entries = [
-        '/external', # Differs on Windows vs macOS/Linux, so we can't check it in. Needs to not have trailing / because it's a symlink on macOS/Linux
-        '/bazel-*', # Bazel output symlinks. Same reasons as external. You need the * because people change the name of the directory your repository is in, changing the bazel-<workspace_name> symlink.
-        '/compile_commands.json', # Compiled output -> don't check in
-        '/.cache/', # Where clangd puts its indexing work
+    needed_entries = [ # Pattern followed by an explainer comment that we'll add to the gitignore
+        ('/external', "# The external link: Differs on Windows vs macOS/Linux, so we can't check it in. The pattern needs to not have a trailing / because it's a symlink on macOS/Linux."),
+        ('/bazel-*', "# Bazel output symlinks: Same reasoning as /external. You need the * because people can change the name of the directory your repository is cloned into, changing the bazel-<workspace_name> symlink."),
+        ('/compile_commands.json', "# Compiled output -> don't check in"),
+        ('/.cache/', "# Directory where clangd puts its indexing work"),
     ]
 
     # Separate operations because Python doesn't have a built in mode for read/write, don't truncate, create, allow seek to beginning of file. 
     open('.gitignore', 'a').close() # Ensure .gitignore exists
     with open('.gitignore') as gitignore:
         lines = [l.rstrip() for l in gitignore]
-    to_add = [e for e in needed_entries if e not in lines]
+    to_add = [entry for entry in needed_entries if entry[0] not in lines]
+    if to_add: # Add a nice header
+        # Ensure spacer before header
+        if lines and lines[-1]:
+            lines.append("")
+        lines.append("### Added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor")
+        for entry in to_add:
+            lines.extend(entry[::-1]) # Explanatory comment, then pattern
     with open('.gitignore', 'w') as gitignore:
         # Rewriting all the lines solves the case of a missing trailing \n
-        for line in itertools.chain(lines, to_add):
+        for line in lines:
             gitignore.write(line)
             gitignore.write('\n')
     if to_add:
-        print(f"\033[0;32m>>> Automatically added {to_add} to .gitignore to avoid problems.\033[0m", file=sys.stderr)
+        print(f"\033[0;32m>>> Automatically added entries to .gitignore to avoid problems.\033[0m", file=sys.stderr)
 
 
 if __name__ == '__main__':
