@@ -11,6 +11,7 @@ Interface (after template expansion):
 """
 
 import sys
+import tempfile
 if sys.version_info < (3,7):
     sys.exit("\n\033[31mFATAL ERROR:\033[0m Python 3.7 or later is required. Please update!")
     # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
@@ -146,6 +147,17 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
         {windows_default_include_paths}
         # End:   template filled by Bazel
     ))
+
+    # Write header_cmd to a temporary file, so we can use it as a parameter to cl.exe,
+    # because Windows cmd has a limitation of 8KB of command line length. So here we make a threshold of len(compile_args) < 8000
+    WIN_CMD_LIMITS = 8000
+    if len('\n'.join(header_cmd)) >= WIN_CMD_LIMITS:
+        fd, temp_params = tempfile.mkstemp(text=True)
+        with open(temp_params, 'w') as f:
+            # should skip cl.exe the 1st line
+            f.write('\n'.join(header_cmd[1:]))
+        os.close(fd)
+        header_cmd = [header_cmd[0], f'@{temp_params}']
 
     header_search_process = subprocess.run(
         header_cmd,
@@ -442,6 +454,8 @@ def _get_commands(target: str, flags: str):
         # Shush logging. Just for readability.
         '--ui_event_filters=-info',
         '--noshow_progress',
+        # Disable param file, only useful for Windows. No effect on Linux.
+        '--features=-compiler_param_file',
     ] + shlex.split(flags) + sys.argv[1:]
 
     aquery_process = subprocess.run(
