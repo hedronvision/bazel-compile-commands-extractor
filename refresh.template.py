@@ -501,6 +501,13 @@ def _ensure_external_workspaces_link_exists():
 
 def _ensure_gitignore_entries():
     """Postcondition: compile_commands.json and the external symlink are .gitignore'd, if it looks like they're using git."""
+    # Silently check that we're in a git repo--and no-op if not.
+    if subprocess.run('git rev-parse --git-dir', # see https://stackoverflow.com/questions/2180270/check-if-current-directory-is-a-git-repository
+        shell=True, # Unifies error case where git isn't even installed by making it also a non-zero exit code w/ no exception
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ).returncode: # non-zero indicates not in git repository
+        return
+
     needed_entries = [
         '/external', # Differs on Windows vs macOS/Linux, so we can't check it in. Needs to not have trailing / because it's a symlink on macOS/Linux
         '/bazel-*', # Bazel output symlinks. Same reasons as external. You need the * because people change the name of the directory your repository is in, changing the bazel-<workspace_name> symlink.
