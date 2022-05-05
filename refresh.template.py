@@ -56,7 +56,7 @@ def _print_header_finding_warning_once():
     print("""\033[0;33m>>> While locating the headers you use, we encountered a compiler warning or error.
     No need to worry; your code doesn't have to compile for this tool to work.
     However, we'll still print the errors and warnings in case they're helpful for you in fixing them.
-    If the errors are about missing files Bazel should generate:
+    If the errors are about missing files that Bazel should generate:
         You might want to run a build of your code with --keep_going.
         That way, everything possible is generated, browsable and indexed for autocomplete.
     But, if you have *already* built your code successfully:

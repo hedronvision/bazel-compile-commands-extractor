@@ -12,7 +12,7 @@ refresh_compile_commands(
 
     # Specify the targets of interest.
         # This will create compile commands entries for all the code compiled by those targets, including transitive dependencies.
-        # It's optional, but if you're reading this, you probably want to. 
+            # If you're working on a header-only library, specify a test or binary target that compiles it.
     # If you're doing this manually, you usually want to just specify the top-level output targets you care about.
         # This avoids issues where some targets can't be built on their own; they need configuration by a parent rule. android_binaries using transitions to configure android_libraries are an example.
     # The targets parameter is forgiving in its inputs.

@@ -89,7 +89,7 @@ Note: you have to `bazel run` this tool, not just `bazel build` it.
 
 It's fairly important that you supply the flags when running this tool, too, so we can accurately understand the build, where files are being generated, etc.
 
-Append, e.g. `-- --config=Debug --compilation_mode=dbg` to the above.
+Append, e.g. `-- --config=Debug --compilation_mode=dbg` to the above, or whatever flags you normally build with while developing.
 
 Note: the extra `--` is not a typo, and functions to pass the flags to this tool when it runs rather than when it builds. Your command should look like:
 
@@ -116,6 +116,7 @@ refresh_compile_commands(
     # No need to add flags already in .bazelrc. They're automatically picked up.
     # If you don't need flags, a list of targets is also okay, as is a single target string.
     # Wildcard patterns, like //... for everything, *are* allowed here, just like a build.
+    # And if you're working on a header-only library, specify a test or binary target that compiles it.
 )
 ```
 
