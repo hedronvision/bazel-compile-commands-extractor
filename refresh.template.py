@@ -11,7 +11,6 @@ Interface (after template expansion):
 """
 
 import sys
-import tempfile
 if sys.version_info < (3,7):
     sys.exit("\n\033[31mFATAL ERROR:\033[0m Python 3.7 or later is required. Please update!")
     # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
@@ -29,6 +28,7 @@ import pathlib
 import re
 import shlex
 import subprocess
+import tempfile
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 
@@ -148,25 +148,34 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
         # End:   template filled by Bazel
     ))
 
-    # Write header_cmd to a temporary file, so we can use it as a parameter to cl.exe,
-    # because Windows cmd has a limitation of 8KB of command line length. So here we make a threshold of len(compile_args) < 8000
-    WIN_CMD_LIMITS = 8000
-    if len('\n'.join(header_cmd)) >= WIN_CMD_LIMITS:
-        fd, temp_params = tempfile.mkstemp(text=True)
-        with open(temp_params, 'w') as f:
-            # should skip cl.exe the 1st line
-            f.write('\n'.join(header_cmd[1:]))
-        os.close(fd)
-        header_cmd = [header_cmd[0], f'@{temp_params}']
+    def _search_headers(command):
+        return subprocess.run(
+            command,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            env=environment,
+            encoding=locale.getpreferredencoding(),
+            check=False, # We explicitly ignore errors and carry on.
+        )
 
-    header_search_process = subprocess.run(
-        header_cmd,
-        stderr=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        env=environment,
-        encoding=locale.getpreferredencoding(),
-        check=False, # We explicitly ignore errors and carry on.
-    )
+    header_search_process = _search_headers(header_cmd)
+    if header_search_process.returncode == 1:
+        # Write header_cmd to a temporary file, so we can use it as a parameter file to cl.exe, because Windows cmd has a limitation of 8191 charactors.
+        # See https://docs.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
+        # To overcome this issue, we can call command parameters from a params file and use the '@' switch to pass the file name.
+        # E.g. cl.exe @params_file.txt
+        # If the return code is 1, it means the command line is too long (>=8191), so we write the command to a temp file and call from it.
+        temp_params = tempfile.NamedTemporaryFile('w', delete=False)
+        # should skip cl.exe the 1st line
+        temp_params.write('\n'.join(header_cmd[1:]))
+        temp_params.close()
+        header_cmd = [header_cmd[0], f'@{temp_params.name}']
+        header_search_process = _search_headers(header_cmd)
+        try:
+            # delete the temp file we created
+            os.remove(temp_params.name)
+        except OSError as ex:
+            print(f"Sorry, but we can't delete the temporary file we created because of {ex}")
 
     # Based on the locale, `cl.exe` will emit different marker strings. See also https://github.com/ninja-build/ninja/issues/613#issuecomment-885185024 and https://github.com/bazelbuild/bazel/pull/7966.
     # We can't just set environment['VSLANG'] = "1033" (English) and be done with it, because we can't assume the user has the English language pack installed.
@@ -239,28 +248,6 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
 _get_headers.has_logged_missing_file_error = False
 
 
-def _params_file_to_source_files(compile_args: typing.List[str]):
-    """Converts a list of params files to a list of source files."""
-    params_files = list(filter(lambda f: f.startswith("@") and f.endswith(".params"), compile_args))
-    # Assume there is only one params file in Bazel of one target
-    # And we parse compile_args generally, so it may not have params file but normal arguments
-    assert len(params_files) <= 1, "Only one params file is supported"
-    for params_file in params_files:
-        params_file = pathlib.Path.cwd() / params_file.strip('@')
-        if params_file.exists():
-            with open(params_file, encoding=locale.getpreferredencoding()) as f:
-                new_compile_args = [line.strip() for line in f.readlines()]
-                # concat with the compiler
-                return compile_args[0:1] + new_compile_args
-        else:
-            raise FileNotFoundError(f"""params file {params_file.name} is not created yet.
-With --features=compiler_param_file enabled, the .params file won't be created until the target is built.
-You have to build the target to generate the .params file. This is a bazel limit.
-""")
-    # return original compile args if no params file or it's broken
-    return compile_args
-
-
 def _get_files(compile_args: typing.List[str]):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
     # Bazel puts the source file being compiled after the -c flag, so we look for the source file there.
@@ -274,16 +261,13 @@ def _get_files(compile_args: typing.List[str]):
                 # Concretely, the message usually has the form "action 'Compiling foo.cpp'"" -> foo.cpp. But it also has "action 'Compiling src/tools/launcher/dummy.cc [for tool]'" -> external/bazel_tools/src/tools/launcher/dummy.cc
                 # If we did ever go this route, you can join the output from aquery --output=text and --output=jsonproto by actionKey.
             # For more context on options and how this came to be, see https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37
-    SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
-    if os.name == 'nt':  # is windows
-        ## if --features=compiler_param_file is enabled on Windows, compile args are stored in .params files
-        ## try to parse .params file to get actual compile args, will do nothing if no .params file is found
-        compile_args = _params_file_to_source_files(compile_args)
     compile_only_flag = '/c' if '/c' in compile_args else '-c' # For Windows/msvc support
     if compile_only_flag not in compile_args:
         raise ValueError(f"{compile_only_flag} not found in compile_args: {compile_args}")
+
     source_index = compile_args.index(compile_only_flag) + 1
     source_file = compile_args[source_index]
+    SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
     assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found after {compile_only_flag} in {compile_args}"
     assert source_index + 1 == len(compile_args) or compile_args[source_index + 1].startswith('-') or not compile_args[source_index + 1].endswith(SOURCE_EXTENSIONS), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_args}"
 
@@ -455,6 +439,8 @@ def _get_commands(target: str, flags: str):
         '--ui_event_filters=-info',
         '--noshow_progress',
         # Disable param file, only useful for Windows. No effect on Linux.
+        # When enable this feature on Windows, the params file won't be actually created until the target is built successfully.
+        # To ensure this command will generate compile commands for analysis, we need to disable this feature in aquery.
         '--features=-compiler_param_file',
     ] + shlex.split(flags) + sys.argv[1:]
 
