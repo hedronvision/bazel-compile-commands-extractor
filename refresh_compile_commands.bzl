@@ -40,7 +40,7 @@ refresh_compile_commands(
         # Defaults to None (always include all headers)
         # Some tools such as ccls work better without header entries, whereas others such as clangd require these (see https://github.com/clangd/clangd/issues/123 for why)
         # all - will omit entires for any and all header files
-        # system - will omit system headers, but keep entries for headers in your workspace and from any external workspaces (dependencies)
+        # system - will omit system headers (/usr/include, etc.), but keep entries for headers in your workspace, and from any external workspaces (dependencies)
         # external - will omit any external headers, but keep system and your workspace's
         # external_and_system - will keep just your workspace's headers
         #
