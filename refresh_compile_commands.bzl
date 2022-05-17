@@ -32,15 +32,20 @@ refresh_compile_commands(
 
     # Optional attributes :
 
-    # Don't generate compile commands entries for headers
-        # This defaults to False - entries will be generated for header files (see https://github.com/clangd/clangd/issues/123 for why)
-    exclude_headers = False
+    # To omit entries for sources from external workspaces (dependencies)
+        # This defaults to False
+    exclude_external_sources = False
 
-    # Don't generate compile commands entires for external files - sources or headers from external workspaces
-        # Note that any generated files from your workspace in bazel-out, etc. will still be included
-        # This also omits headers from locations outside your workspace, such as /usr/include/...
-        # This defaults to False - entries will be generated for external files
-    exclude_external_workspaces = False
+    # To omit entries for some or all headers
+        # Defaults to None (always include all headers)
+        # Some tools such as ccls work better without header entries, whereas others such as clangd require these (see https://github.com/clangd/clangd/issues/123 for why)
+        # all - will omit entires for any and all header files
+        # system - will omit system headers, but keep entries for headers in your workspace and from any external workspaces (dependencies)
+        # external - will omit any external headers, but keep system and your workspace's
+        # external_and_system - will keep just your workspace's headers
+        #
+        # Note that any generated files from your workspace in bazel-out, etc. will still be included - these are considered part of your workspace's headers
+    exclude_external_workspaces = "all" | "external" | "system" | "external_and_system"
 ```
 """
 
@@ -77,8 +82,8 @@ def _expand_template_impl(ctx):
             # Note, don't delete whitespace. Correctly doing multiline indenting.
             "        {target_flag_pairs}": "\n".join(["        {},".format(pair) for pair in ctx.attr.labels_to_flags.items()]),
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
-            "{exclude_headers}": str(ctx.attr.exclude_headers),
-            "{exclude_external_workspaces}": str(ctx.attr.exclude_external_workspaces),
+            "{exclude_headers}": '"' + str(ctx.attr.exclude_headers) + '"',
+            "{exclude_external_sources}": str(ctx.attr.exclude_external_sources),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -86,8 +91,8 @@ def _expand_template_impl(ctx):
 _expand_template = rule(
     attrs = {
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
-        "exclude_headers": attr.bool(default = False),
-        "exclude_external_workspaces": attr.bool(default = False),
+        "exclude_external_sources": attr.bool(default = False),
+        "exclude_headers": attr.string(values = ["all", "system", "external", "external_and_system"]),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),  # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
     },

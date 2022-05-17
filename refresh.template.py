@@ -195,6 +195,60 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
     return headers
 
 
+def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
+    """Helper to determine if one path is relative to another"""
+    try:
+        # Note:  Python 3.9 has .is_relative_to()
+        sub.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _is_file_in_external_workspace(file_str: str):
+    """Returns True if the file is in the current workspace's external workspace.
+    Works with relative and absolute paths
+    """
+
+    workspace = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+    external_rel = pathlib.PurePath("external")
+    external_abs = workspace / external_rel
+    header = pathlib.PurePath(file_str)
+
+
+    # Relative path to a file in external workspace
+    # "external/..."
+    if _is_relative_to(header, external_rel): return True
+    # Absolte path to a file in external workspace
+    # "/some/workspace/external/..."
+    if _is_relative_to(header, external_abs): return True
+
+    return False
+
+
+def _is_file_in_workspace(file_str: str):
+    """Returns True if the file is in the current workspace.
+    If the file is in an workspace this return False
+    Works with relative and absolute paths
+    """
+
+    workspace = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+    header = pathlib.PurePath(file_str)
+
+    # Anything in the workspace/external/... symlink is technically in an external workspace
+    if _is_file_in_external_workspace(file_str): return False
+    # Assume anything relative is in the workspace
+    elif not header.is_absolute(): return True
+    # Otherwise check the path is relative to the workspace dir
+    elif _is_relative_to(header, workspace): return True
+
+    return False
+
+def _is_file_outside_workspace(file_str: str):
+    """Convenience wrapper - returns True if the file is not in any workspace"""
+    return not _is_file_in_workspace(file_str) and not _is_file_in_external_workspace(file_str)
+
+
 def _get_headers(compile_args: typing.List[str], source_path: str):
     """Gets the headers used by a particular compile command.
 
@@ -228,10 +282,14 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
     else:
         headers = _get_headers_gcc(compile_args, source_path)
 
-    if opts.exclude_external_workspaces:
-        # If the header is from an external workspace, it will start with external/...
-        # If it is an absolute path, it's outside this workspace (/usr/include, etc.)
-        headers = {header for header in headers if not header.startswith("external") and not pathlib.Path(header).is_absolute()}
+    if {exclude_headers} == "all":
+        headers = set()
+    elif {exclude_headers} == "external":
+        headers = {header for header in headers if not _is_file_in_external_workspace(header)}
+    elif {exclude_headers} == "system":
+        headers = {header for header in headers if not _is_file_outside_workspace(header)}
+    elif {exclude_headers} == "external_and_system":
+        headers = {header for header in headers if not _is_file_outside_workspace(header) and not _is_file_in_external_workspace(header)}
 
     return headers
 
@@ -262,7 +320,7 @@ def _get_files(compile_args: typing.List[str]):
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and just return the single source file.
-    return {source_file}, set() if opts.exclude_headers else _get_headers(compile_args, source_file)
+    return {source_file}, _get_headers(compile_args, source_file)
 
 
 @functools.lru_cache(maxsize=None)
@@ -376,7 +434,7 @@ def _convert_compile_commands(aquery_output):
     Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific environment variables, etc.
     """
 
-    if opts.exclude_external_workspaces:
+    if {exclude_external_sources}:
         targets = {target.id : target.label for target in aquery_output.targets}
         # For each action, find its target
         # If the target starts with @, it's an action for a target in an external workspace
@@ -558,14 +616,6 @@ def _ensure_gitignore_entries():
         print(f"\033[0;32m>>> Automatically added entries to .gitignore to avoid problems.\033[0m", file=sys.stderr)
 
 
-@dataclasses.dataclass(frozen=True)
-class Options:
-    exclude_headers: bool = False
-    """Do not add entries for header files in compile_commands.json"""
-
-    exclude_external_workspaces: bool = False
-    """Do not add entries for sources or headers in external workspaces.  Also omits system or other includes with absolute paths"""
-
 if __name__ == '__main__':
     workspace_root = pathlib.Path(os.environ['BUILD_WORKSPACE_DIRECTORY']) # Set by `bazel run`
     os.chdir(workspace_root) # Ensure the working directory is the workspace root. Assumed by future commands.
@@ -578,13 +628,6 @@ if __name__ == '__main__':
         {target_flag_pairs}
         # End:   template filled by Bazel
     ]
-
-    opts = Options(
-        # Begin: template filled by Bazel
-        exclude_headers = {exclude_headers},
-        exclude_external_workspaces = {exclude_external_workspaces},
-        # End:   template filled by Bazel
-    )
 
     compile_command_entries = []
     for (target, flags) in target_flag_pairs:
