@@ -19,7 +19,6 @@ if sys.version_info < (3,7):
 
 
 import concurrent.futures
-import dataclasses
 import functools
 import itertools
 import json
@@ -198,58 +197,39 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
 def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
     """Helper to determine if one path is relative to another"""
     try:
-        # Note:  Python 3.9 has .is_relative_to()
+        # MIN_PY=3.9: Eliminate helper in favor of PurePath.is_relative_to()
         sub.relative_to(parent)
         return True
     except ValueError:
         return False
 
 
-def _is_file_in_external_workspace(file_str: str):
-    """Returns True if the file is in the current workspace's external workspace.
-    Works with relative and absolute paths
+def _file_in_workspace_and_not_extenral(file_str: str):
+    """Returns True if the file is in the workspace, but not under workspace/external/* (external workspaces)
+    Accounts for relative and absolute paths.
+    Relative paths assumed to start at workspace root.
     """
 
-    workspace = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
-    external_rel = pathlib.PurePath("external")
-    external_abs = workspace / external_rel
-    header = pathlib.PurePath(file_str)
+    file_rel_or_abs = pathlib.PurePath(file_str)
+    workspace_abs = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+    ext_abs = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"]).joinpath("external")
+    ext_rel = pathlib.PurePath("external")
 
 
-    # Relative path to a file in external workspace
-    # "external/..."
-    if _is_relative_to(header, external_rel): return True
-    # Absolte path to a file in external workspace
-    # "/some/workspace/external/..."
-    if _is_relative_to(header, external_abs): return True
+    if not file_rel_or_abs.is_absolute() and not _is_relative_to(file_rel_or_abs, ext_rel):
+        # some/file.h, but not external/some/file.h
+        # also allows for things like bazel-out/generated/file.h
+        return True
+
+    if _is_relative_to(file_rel_or_abs, workspace_abs) and not _is_relative_to(file_rel_or_abs, ext_abs):
+        # /abs/path/to/workspace/some/file.h, but not /abs/path/to/workspace/exernal/some/file.h
+        # also allowsfor things like/abs/path/to/workspace/bazel-out/generated/file.h
+        return True
 
     return False
 
 
-def _is_file_in_workspace(file_str: str):
-    """Returns True if the file is in the current workspace.
-    If the file is in an workspace this return False
-    Works with relative and absolute paths
-    """
-
-    workspace = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
-    header = pathlib.PurePath(file_str)
-
-    # Anything in the workspace/external/... symlink is technically in an external workspace
-    if _is_file_in_external_workspace(file_str): return False
-    # Assume anything relative is in the workspace
-    elif not header.is_absolute(): return True
-    # Otherwise check the path is relative to the workspace dir
-    elif _is_relative_to(header, workspace): return True
-
-    return False
-
-def _is_file_outside_workspace(file_str: str):
-    """Convenience wrapper - returns True if the file is not in any workspace"""
-    return not _is_file_in_workspace(file_str) and not _is_file_in_external_workspace(file_str)
-
-
-def _get_headers(compile_args: typing.List[str], source_path: str):
+def _get_headers(compile_action, compile_args: typing.List[str], source_path: str):
     """Gets the headers used by a particular compile command.
 
     Relatively slow. Requires running the C preprocessor.
@@ -261,43 +241,26 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
     # Rather than print a scary compiler error, warn gently
-    if not os.path.isfile(source_path):
-        if not _get_headers.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
-            _get_headers.has_logged_missing_file_error = True
-            print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_path}
-    It's probably a generated file, and you haven't yet run a build to generate it.
-    That's OK; your code doesn't even have to compile for this tool to work.
-    If you can, though, you might want to run a build of your code.
-        That way everything is generated, browsable and indexed for autocomplete.
-    However, if you have *already* built your code, and generated the missing file...
-        Please make sure you're supplying this tool with the same flags you use to build.
-        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
-        [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
-    Continuing gracefully...\033[0m""",  file=sys.stderr)
-        return set()
+    assert os.path.isfile(source_path), f"source_path ({source_path}) must exist"
 
+    if {exclude_headers} == "all":
+        return set()
+    elif {exclude_headers} == "external" and compile_action.is_external:
+        # Short-cut - an external action can't include headers in the workspace (or, non-external headers)
+        return set()
 
     if compile_args[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers = _get_headers_msvc(compile_args, source_path)
     else:
         headers = _get_headers_gcc(compile_args, source_path)
 
-    if {exclude_headers} == "all":
-        headers = set()
-    elif {exclude_headers} == "external":
-        headers = {header for header in headers if not _is_file_in_external_workspace(header)}
-    elif {exclude_headers} == "system":
-        headers = {header for header in headers if not _is_file_outside_workspace(header)}
-    elif {exclude_headers} == "external_and_system":
-        headers = {header for header in headers if not _is_file_outside_workspace(header) and not _is_file_in_external_workspace(header)}
+    if {exclude_headers} == "external":
+        headers = {header for header in headers if _file_in_workspace_and_not_extenral(header)}
 
     return headers
 
 
-_get_headers.has_logged_missing_file_error = False
-
-
-def _get_files(compile_args: typing.List[str]):
+def _get_files(compile_action, compile_args: typing.List[str]):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
     # Bazel puts the source file being compiled after the -c flag, so we look for the source file there.
     # This is a strong assumption about Bazel internals, so we're taking special care to check that this condition holds with asserts. That way things don't fail silently if it changes some day.
@@ -317,10 +280,28 @@ def _get_files(compile_args: typing.List[str]):
     assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found after {compile_only_flag} in {compile_args}"
     assert source_index + 1 == len(compile_args) or compile_args[source_index + 1].startswith('-') or not compile_args[source_index + 1].endswith(SOURCE_EXTENSIONS), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_args}"
 
+    file_exists = os.path.isfile(source_file)
+    if not file_exists:
+        if not _get_files.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
+            _get_files.has_logged_missing_file_error = True
+            print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_path}
+    It's probably a generated file, and you haven't yet run a build to generate it.
+    That's OK; your code doesn't even have to compile for this tool to work.
+    If you can, though, you might want to run a build of your code.
+        That way everything is generated, browsable and indexed for autocomplete.
+    However, if you have *already* built your code, and generated the missing file...
+        Please make sure you're supplying this tool with the same flags you use to build.
+        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
+        [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
+    Continuing gracefully...\033[0m""",  file=sys.stderr)
+
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and just return the single source file.
-    return {source_file}, _get_headers(compile_args, source_file)
+    return {source_file}, _get_headers(compile_action, compile_args, source_file) if file_exists else set()
+
+
+_get_files.has_logged_missing_file_error = False
 
 
 @functools.lru_cache(maxsize=None)
@@ -419,7 +400,7 @@ def _get_cpp_command_for_files(compile_action):
     compile_args = _apple_platform_patch(compile_args)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
-    source_files, header_files = _get_files(compile_args)
+    source_files, header_files = _get_files(compile_action, compile_args)
 
     return source_files, header_files, compile_args
 
@@ -434,14 +415,23 @@ def _convert_compile_commands(aquery_output):
     Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific environment variables, etc.
     """
 
+    targets_by_id = {target.id : target.label for target in aquery_output.targets}
+
+    def _amend_action_as_external(action):
+        """Tag action as external if it's generating an external target"""
+        target = targets_by_id[action.targetId]
+
+        assert target, f"Missing target with id {action.targetId} for action with key {action.actionKey}"
+        assert not target.startswith("@//"), f"Not expecting target label to start with @//, for action {action.actionKey}"
+        assert not target.startswith("//external"), f"Not expecting target label to start with //external, for action {action.actionKey}"
+
+        action.is_external = target.startswith("@")
+        return action
+
+    actions = (_amend_action_as_external(action) for action in aquery_output.actions)
+
     if {exclude_external_sources}:
-        targets = {target.id : target.label for target in aquery_output.targets}
-        # For each action, find its target
-        # If the target starts with @, it's an action for a target in an external workspace
-        # If the target can't be found (not sure if this can happen), just keep the action
-        actions = (action for action in aquery_output.actions if not targets.get(action.targetId, "").startswith("@"))
-    else:
-        actions = aquery_output.actions
+        actions = filter(lambda action: not action.is_external, actions)
 
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
