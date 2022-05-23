@@ -284,7 +284,7 @@ def _get_files(compile_action, compile_args: typing.List[str]):
     if not file_exists:
         if not _get_files.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
             _get_files.has_logged_missing_file_error = True
-            print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_path}
+            print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_file}
     It's probably a generated file, and you haven't yet run a build to generate it.
     That's OK; your code doesn't even have to compile for this tool to work.
     If you can, though, you might want to run a build of your code.
