@@ -23,7 +23,7 @@ refresh_compile_commands(
         # Or a dict of targets and any flags required to build:
             # (No need to add flags already in .bazelrc. They're automatically picked up.)
             # targets = {
-            #   "//:my_output_1": "--important_flag1 --important_flag2=true", 
+            #   "//:my_output_1": "--important_flag1 --important_flag2=true",
             #   "//:my_output_2": "",
             # },
         # If you don't specify a target, that's fine (if it works for you); compile_commands.json will default to containing commands used in building all possible targets. But in that case, just bazel run @hedron_compile_commands//:refresh_all
@@ -47,7 +47,7 @@ def refresh_compile_commands(name, targets = None,
         targets = {"@//...": ""}
     elif type(targets) == "list": # Allow specifying a list of targets w/o arguments
         targets = {target: "" for target in targets}
-    elif type(targets) != "dict": # Assume they've supplied a single string/label and wrap it 
+    elif type(targets) != "dict": # Assume they've supplied a single string/label and wrap it
         targets = {targets: ""}
 
     # Generate runnable python script from template

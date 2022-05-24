@@ -38,7 +38,7 @@ import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
         # Downside: We could miss headers conditionally included, e.g., by platform.
         # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
         # Anticipated speedup: ~2x (30s to 15s.)
-    # A better one would be to cache include information. 
+    # A better one would be to cache include information.
         # We could check to see if Bazel has cached .d files listing the dependencies and use those instead of preprocessing everything to regenerate them.
             # If all the files listed in the .d file have older last-modified dates than the .d file itself, this should be safe. We'd want to check that bazel isn't 0-timestamping generated files, though.
         # We could also write .d files when needed, saving work between runs.
@@ -50,7 +50,7 @@ def _print_header_finding_warning_once():
     # Shared between platforms
 
     # Just log once; subsequent messages wouldn't add anything.
-    if _print_header_finding_warning_once.has_logged: return 
+    if _print_header_finding_warning_once.has_logged: return
     _print_header_finding_warning_once.has_logged = True
 
     print("""\033[0;33m>>> While locating the headers you use, we encountered a compiler warning or error.
@@ -205,7 +205,7 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
     # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
-    # Rather than print a scary compiler error, warn gently 
+    # Rather than print a scary compiler error, warn gently
     if not os.path.isfile(source_path):
         if not _get_headers.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
             _get_headers.has_logged_missing_file_error = True
@@ -216,7 +216,7 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
         That way everything is generated, browsable and indexed for autocomplete.
     However, if you have *already* built your code, and generated the missing file...
         Please make sure you're supplying this tool with the same flags you use to build.
-        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README. 
+        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
         [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
     Continuing gracefully...\033[0m""",  file=sys.stderr)
         return set()
@@ -476,7 +476,7 @@ def _ensure_external_workspaces_link_exists():
         except OSError:
             print("\033[0;31m>>> //external already exists, but it isn't a symlink or Windows junction. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.\033[0m", file=sys.stderr) # Don't auto delete in case the user has something important there.
             exit(1)
-        
+
         # Normalize the path for matching
         # First, workaround a gross case where Windows readlink returns extended path, starting with \\?\, causing the match to fail
         if is_windows and current_dest.startswith('\\\\?\\'):
@@ -516,7 +516,7 @@ def _ensure_gitignore_entries():
         ('/.cache/', "# Directory where clangd puts its indexing work"),
     ]
 
-    # Separate operations because Python doesn't have a built in mode for read/write, don't truncate, create, allow seek to beginning of file. 
+    # Separate operations because Python doesn't have a built in mode for read/write, don't truncate, create, allow seek to beginning of file.
     open('.gitignore', 'a').close() # Ensure .gitignore exists
     with open('.gitignore') as gitignore:
         lines = [l.rstrip() for l in gitignore]
