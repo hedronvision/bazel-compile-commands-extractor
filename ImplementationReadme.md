@@ -105,7 +105,7 @@ I'm calling out this decision explicitly, because there's a tempting trap that c
 
 Do not be tempted to set the compilation "directory" to the bazel execroot (`bazel info execution_root`). The execroot may seem to work but breaks subtly on the next build; the execroot directory is reconfigured for whatever new target is being built, deleting the links to external workspaces and top-level packages not used by that particular build. Using the execroot might be tempting because that *is* where Bazel says it's going to invoke the command it gave you, but don't do it! It'll only have the subset of the code used for the last build, not for all build, breaking the paths used for editing the rest of the codebase.
 
-Remember that the key goal of compile_commands.json is to "de-Bazel" the build commands into something clangd can understand. Not pointing into bazel's temporary build scratch space (execroot) is an important part of decoupling from bazel's transitory state. 
+Remember that the key goal of compile_commands.json is to "de-Bazel" the build commands into something clangd can understand. Not pointing into bazel's temporary build scratch space (execroot) is an important part of decoupling from bazel's transitory state.
 
 ##### Generated files: //external link makes external dependencies work
 
@@ -113,7 +113,7 @@ Having avoided the execroot trap, we have compile_commands.json describing compi
 
 There are two other important cases to consider: generated files and external code. In each of these cases, we can't point to a bazel-independent source; Bazel generates the files! But we can choose to point into a cache where Bazel *accumulates* the files rather than the execroot build directory, where some disappear on each build.
 
-For generated files, Bazel creates a nice link for us in our workspace, `//bazel-out` that points into the cache. This location accumulates the most recent build products for each platform (despite being in execroot.) Commands then just work because `//bazel-out` has the same name and relative path as the `bazel-out` in Bazel's compilation sandbox. Great! 
+For generated files, Bazel creates a nice link for us in our workspace, `//bazel-out` that points into the cache. This location accumulates the most recent build products for each platform (despite being in execroot.) Commands then just work because `//bazel-out` has the same name and relative path as the `bazel-out` in Bazel's compilation sandbox. Great!
 
 For external code (that we've brought in via WORKSPACE), Bazel's build commands look for an `//external` directory in the workspace. Bazel doesn't create a link for it by default...so we created one, and everything works.
 
@@ -127,9 +127,9 @@ This points into the accumulating cache under the output base, where external co
 
 [Linking via `bazel-<WORKSPACE_DIRECTORY_NAME>/../../external` would also have pointed to the same place, but would have broken if the workspace directory name changed. It also seemed less clean semantically.]
 
-Another option would be having [refresh.template.py](./refresh.template.py) patch external paths, rather than pointing through a link. It could detect and prepend to paths starting with "external/" or "bazel-out/" with the path of the link to get equivalent behavior. However, there's some trickiness there and //external is a handy way for humans to browse the source code of external dependencies. 
+Another option would be having [refresh.template.py](./refresh.template.py) patch external paths, rather than pointing through a link. It could detect and prepend to paths starting with "external/" or "bazel-out/" with the path of the link to get equivalent behavior. However, there's some trickiness there and //external is a handy way for humans to browse the source code of external dependencies.
 
-It looks like long ago—and perhaps still inside Google—Bazel created such an `//external` link. Tulsi, Bazel's XCode helper, once needed the `//external` link in the workspace to properly pick up external dependencies. This is no longer true, though you can see some of the history [here](https://github.com/bazelbuild/tulsi/issues/164). 
+It looks like long ago—and perhaps still inside Google—Bazel created such an `//external` link. Tulsi, Bazel's XCode helper, once needed the `//external` link in the workspace to properly pick up external dependencies. This is no longer true, though you can see some of the history [here](https://github.com/bazelbuild/tulsi/issues/164).
 
 
 ## Choice of Strategy for Listening To Bazel

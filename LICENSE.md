@@ -3,13 +3,13 @@
 We've received a bunch of requests to release this tool.
 Together, let's make what was originally a handy, Hedron-internal tool more useful to more people. We hope that it's a win for you!
 
-**Goals:** 
+**Goals:**
 
 - Primarily: Release a tool for people to use for their own productivity and encourage collaboration on improvements. You get to use the tool; we all benefit from improvements. Make the world a little happier and more efficient!
 - We'd also like to stay safe from opening ourselves up to liability or lawsuits for trying to provide free help by releasing this software...
 - We're looking forward to learning and growing along the way.
 
-[For clarity: This is intended to be a source-available & contribution-encouraging license of a Hedron tool; we're trying to broaden usage and improvements, but  not make it FSF-style free software or similar. We're trying to help--but also retain some rights. If that doesn't work for your needs, though, let's talk! There are open, friendly, learning humans behind this :) ] 
+[For clarity: This is intended to be a source-available & contribution-encouraging license of a Hedron tool; we're trying to broaden usage and improvements, but  not make it FSF-style free software or similar. We're trying to help--but also retain some rights. If that doesn't work for your needs, though, let's talk! There are open, friendly, learning humans behind this :) ]
 
 The actual license follows (and controls). By downloading or using this software or any related content (the "Software"), you agree to be bound by the terms of this agreement. If you do not or cannot agree to the terms of this agreement, please do not download, use, or contribute to the Software.
 
@@ -17,7 +17,7 @@ The actual license follows (and controls). By downloading or using this software
 
 <!-- Allow personal/internal use, free of charge. -->
 
-Hedron Vision Incorporated ("Hedron") hereby grants each recipient ("you") of this Software a non-exclusive license to run the Software for your own personal, internal development productivity, free of charge. 
+Hedron Vision Incorporated ("Hedron") hereby grants each recipient ("you") of this Software a non-exclusive license to run the Software for your own personal, internal development productivity, free of charge.
 
 > This includes internal use at a company. You may also customize the software for your own private use and distribute such changes internally.
 
