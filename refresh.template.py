@@ -415,30 +415,30 @@ def _convert_compile_commands(aquery_output):
     Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific environment variables, etc.
     """
 
-    targets_by_id = {target.id : target.label for target in aquery_output.targets}
+    # Tag actions as external if we're going to need to know that later.
+    if {exclude_external_sources} or {exclude_headers} == "external":
+        targets_by_id = {target.id : target.label for target in aquery_output.targets}
 
-    def _amend_action_as_external(action):
-        """Tag action as external if it's generating an external target"""
-        target = targets_by_id[action.targetId]
+        def _amend_action_as_external(action):
+            """Tag action as external if it's created by an external target"""
+            target = targets_by_id[action.targetId] # Should always be present. KeyError as implicit assert.
+            assert not target.startswith("@//"), f"Expecting local targets to start with // in aquery output. Found @// for action {action}, target {target}"
+            assert not target.startswith("//external"), f"Expecting external targets will start with @. Found //external for action {action}, target {target}"
 
-        assert target, f"Missing target with id {action.targetId} for action with key {action.actionKey}"
-        assert not target.startswith("@//"), f"Not expecting target label to start with @//, for action {action.actionKey}"
-        assert not target.startswith("//external"), f"Not expecting target label to start with //external, for action {action.actionKey}"
+            action.is_external = target.startswith("@")
+            return action
 
-        action.is_external = target.startswith("@")
-        return action
+        aquery_output.actions = (_amend_action_as_external(action) for action in aquery_output.actions)
 
-    actions = (_amend_action_as_external(action) for action in aquery_output.actions)
-
-    if {exclude_external_sources}:
-        actions = filter(lambda action: not action.is_external, actions)
+        if {exclude_external_sources}:
+            aquery_output.actions = filter(lambda action: not action.is_external, aquery_output.actions)
 
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, actions)
+        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
