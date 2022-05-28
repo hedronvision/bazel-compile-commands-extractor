@@ -36,7 +36,7 @@ import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 # There are some optimization that would improve speed. Here are the ones we've thought of in case we ever want them. But we we anticipate that this problem will be temporary; clangd improves fast.
     # The simplest would be to only search for headers once per source file.
         # Downside: We could miss headers conditionally included, e.g., by platform.
-        # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
+        # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitude speed win as single-threaded set).
         # Anticipated speedup: ~2x (30s to 15s.)
     # A better one would be to cache include information.
         # We could check to see if Bazel has cached .d files listing the dependencies and use those instead of preprocessing everything to regenerate them.
@@ -204,29 +204,26 @@ def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
         return False
 
 
-def _file_in_workspace_and_not_external(file_str: str):
-    """Returns True if the file is in the workspace, but not under workspace/external/* (external workspaces)
-    Accounts for relative and absolute paths.
-    Relative paths assumed to start at workspace root.
-    """
+def _file_is_in_main_workspace_and_not_external(file_str: str):
+    file_path = pathlib.PurePath(file_str)
+    if file_path.is_absolute():
+        workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+        if not _is_relative_to(file_path, workspace_absolute):
+            return False
+        file_path = file_path.relative_to(workspace_absolute)
+    # You can now assume that the path is relative to the workspace.
+    # [Already assuming that relative paths are relative to the main workspace.]
+    
+    # some/file.h, but not external/some/file.h
+    # also allows for things like bazel-out/generated/file.h
+    if _is_relative_to(file_path, pathlib.PurePath("external")):
+        return False
 
-    file_rel_or_abs = pathlib.PurePath(file_str)
-    workspace_abs = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
-    ext_abs = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"]).joinpath("external")
-    ext_rel = pathlib.PurePath("external")
+    # ... but, ignore files in e.g. bazel-out/<configuration>/bin/external/
+    if file_path.parts[0] == 'bazel-out' and file_path.parts[3] == 'external':
+        return False 
 
-
-    if not file_rel_or_abs.is_absolute() and not _is_relative_to(file_rel_or_abs, ext_rel):
-        # some/file.h, but not external/some/file.h
-        # also allows for things like bazel-out/generated/file.h
-        return True
-
-    if _is_relative_to(file_rel_or_abs, workspace_abs) and not _is_relative_to(file_rel_or_abs, ext_abs):
-        # /abs/path/to/workspace/some/file.h, but not /abs/path/to/workspace/exernal/some/file.h
-        # also allowsfor things like/abs/path/to/workspace/bazel-out/generated/file.h
-        return True
-
-    return False
+    return True
 
 
 def _get_headers(compile_action, source_path: str):
@@ -243,7 +240,7 @@ def _get_headers(compile_action, source_path: str):
     if {exclude_headers} == "all":
         return set()
     elif {exclude_headers} == "external" and compile_action.is_external:
-        # Short-cut - an external action can't include headers in the workspace (or, non-external headers)
+        # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
         return set()
 
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
@@ -252,7 +249,7 @@ def _get_headers(compile_action, source_path: str):
         headers = _get_headers_gcc(compile_action.arguments, source_path)
 
     if {exclude_headers} == "external":
-        headers = {header for header in headers if _file_in_workspace_and_not_external(header)}
+        headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
 
     return headers
 
