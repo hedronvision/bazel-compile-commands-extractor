@@ -53,11 +53,11 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 http_archive(
     name = "hedron_compile_commands",
 
-    # Replace the commit hash in both places (below) with the latest, rather than using the stale one here. 
+    # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
     url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/af9af15f7bc16fc3e407e2231abfcb62907d258f.tar.gz",
     strip_prefix = "bazel-compile-commands-extractor-af9af15f7bc16fc3e407e2231abfcb62907d258f",
-    # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..." 
+    # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
 )
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 hedron_compile_commands_setup()
@@ -65,9 +65,11 @@ hedron_compile_commands_setup()
 
 #### Suggestion: Updates
 
-We'd strongly recommend you set up [Renovate](https://github.com/renovatebot/renovate) (or similar) to keep this dependency (and others) up-to-date by default. [We aren't affiliated with Renovate or anything, but we think it's awesome. It watches for new versions and sends you PRs for review or automated testing. It's free and easy to set up. It's been astoundingly useful in our codebase, and we've worked with the wonderful maintainer to make things great for Bazel use.]
+Improvements come frequently, so we'd recommend keeping up-to-date.
 
-If not now, maybe come back to this step later, or watch this repo for updates. [Or hey, maybe give us a quick star, while you're thinking about watching.] Like Abseil, we live at head; the latest commit to the main branch is the commit you want.
+We'd strongly recommend you set up [Renovate](https://github.com/renovatebot/renovate) (or similar) at some point to keep this dependency (and others) up-to-date by default. [We aren't affiliated with Renovate or anything, but we think it's awesome. It watches for new versions and sends you PRs for review or automated testing. It's free and easy to set up. It's been astoundingly useful in our codebase, and we've worked with the wonderful maintainer to make things great for Bazel use.]
+
+If not now, maybe come back to this step later, or watch this repo for updates. [Or hey, maybe give us a quick star, while you're thinking about watching.] Like Abseil, we live at head; the latest commit to the main branch is the commit you want. So don't rely on release notifications; use [Renovate](https://github.com/renovatebot/renovate) or poll manually for new commits.
 
 ### Get the extractor running.
 
@@ -77,7 +79,7 @@ That file describes how Bazel is compiling all the (Objective-)C(++) files. With
 
 We'll get it running and then move onto the next section while it whirrs away. But in the future, every time you want tooling (like autocomplete) to see new BUILD-file changes, rerun the command you chose below! Clangd will automatically pick up the changes.
 
-#### There are three common paths:
+#### There are four common paths:
 
 ##### 1. Have a relatively simple codebase, where every target builds without needing any additional configuration or flags?
 
@@ -89,7 +91,7 @@ Note: you have to `bazel run` this tool, not just `bazel build` it.
 
 It's fairly important that you supply the flags when running this tool, too, so we can accurately understand the build, where files are being generated, etc.
 
-Append, e.g. `-- --config=Debug --compilation_mode=dbg` to the above.
+Append, e.g. `-- --config=Debug --compilation_mode=dbg` to the above, or whatever flags you normally build with while developing.
 
 Note: the extra `--` is not a typo, and functions to pass the flags to this tool when it runs rather than when it builds. Your command should look like:
 
@@ -110,18 +112,29 @@ refresh_compile_commands(
     # Specify the targets of interest.
     # For example, specify a dict of targets and any flags required to build.
     targets = {
-      "//:my_output_1": "--important_flag1 --important_flag2=true", 
+      "//:my_output_1": "--important_flag1 --important_flag2=true",
       "//:my_output_2": "",
     },
     # No need to add flags already in .bazelrc. They're automatically picked up.
     # If you don't need flags, a list of targets is also okay, as is a single target string.
     # Wildcard patterns, like //... for everything, *are* allowed here, just like a build.
+    # And if you're working on a header-only library, specify a test or binary target that compiles it.
 )
 ```
 
 (For more details on `refresh_compile_commands`, look at the docs at the top of [refresh_compile_commands.bzl](./refresh_compile_commands.bzl)).
 
 Finally, you'll need to `bazel run :refresh_compile_commands`
+
+##### 4. Using ccls or another tool that, unlike clangd, doesn't want or need headers in compile_commands.json?
+
+Similar to the above, we'll use `refresh_compile_commands` for configuration, but instead of setting `targets`, set `exclude_headers = "all"`.
+
+### If you've got a very large project and compile_commands.json is taking a while to generate:
+
+Adding `exclude_external_sources = True` and `exclude_headers = "external"` can help, with some tradeoffs.
+
+For now, we'd suggest continuing on to set up clangd (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of clangd and/or this tool to index quickly, take a look at the docs at the top of [refresh_compile_commands.bzl](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
 
 ## Editor Setup — for autocomplete based on compile_commands.json
 
@@ -145,7 +158,7 @@ Add the following three separate entries to `"clangd.arguments"`:
 --query-driver=/**/*
 ```
 (Just copy each as written; VSCode will correctly expand ${workspaceFolder} for each workspace.)
-  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause clangd to interrogate Bazel's compiler wrappers to figure out which system headers they include by default.
+  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause clangd to interrogate Bazel's compiler wrappers to figure out which system headers are included by default.
   -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory by overriding *both* flags in your *workspace* settings
 
 
@@ -164,7 +177,7 @@ You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the 
 
 If you're using another editor, you'll need to follow the same rough steps as above: [get clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the flags.
 
-Once you've succeeded in setting up another editor—or set up clangtidy, or otherwise seen a way to improve this tool—we'd love it if you'd contribute what you know!
+Once you've succeeded in setting up another editor—or set up clang-tidy, or otherwise seen a way to improve this tool—we'd love it if you'd contribute what you know!
 
 ## "Smooth Edges" — what we've enjoyed using this for.
 
