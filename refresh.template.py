@@ -289,6 +289,7 @@ def _get_files(compile_action):
                 # If we did ever go this route, you can join the output from aquery --output=text and --output=jsonproto by actionKey.
             # For more context on options and how this came to be, see https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37
     compile_only_flag = '/c' if '/c' in compile_action.arguments else '-c' # For Windows/msvc support
+    assert compile_only_flag in compile_action.arguments, f"/c or -c, required for parsing sources, is not found in compile args: {compile_action.arguments}"
     source_index = compile_action.arguments.index(compile_only_flag) + 1
     source_file = compile_action.arguments[source_index]
     SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
