@@ -30,10 +30,10 @@ refresh_compile_commands(
         # Wildcard target patterns (..., *, :all) patterns *are* allowed, like in bazel build
             # For more, see https://docs.bazel.build/versions/main/guide.html#specifying-targets-to-build
 
-    # Using CCLS or another tool that doesn't want or need headers in compile_commands.json?
+    # Using ccls or another tool that doesn't want or need headers in compile_commands.json?
         # exclude_headers = "all", # By default, we include entries for headers to support clangd, working around https://github.com/clangd/clangd/issues/123
         # ^ excluding headers will speed up compile_commands.json generation *considerably* because we won't need to preprocess your code to figure out which headers you use. 
-        # However, if you use clangd and are looking for speed, we strongly recommend you follow the instructions below instead, since clagnd is going to regularly infer the wrong commands for headers and give you lots of annoyingly unnecessary red squigglies.
+        # However, if you use clangd and are looking for speed, we strongly recommend you follow the instructions below instead, since clangd is going to regularly infer the wrong commands for headers and give you lots of annoyingly unnecessary red squigglies.
 
     # Need things to run faster? [Either for compile_commands.json generation or clangd indexing.]
     # First: You might be able to refresh compile_commands.json slightly less often, making the current runtime okay. 
