@@ -36,7 +36,7 @@ import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 # There are some optimization that would improve speed. Here are the ones we've thought of in case we ever want them. But we we anticipate that this problem will be temporary; clangd improves fast.
     # The simplest would be to only search for headers once per source file.
         # Downside: We could miss headers conditionally included, e.g., by platform.
-        # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitudespeed win as single-threaded set).
+        # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitude speed win as single-threaded set).
         # Anticipated speedup: ~2x (30s to 15s.)
     # A better one would be to cache include information.
         # We could check to see if Bazel has cached .d files listing the dependencies and use those instead of preprocessing everything to regenerate them.
@@ -194,7 +194,39 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
     return headers
 
 
-def _get_headers(compile_args: typing.List[str], source_path: str):
+def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
+    """Helper to determine if one path is relative to another"""
+    try:
+        # MIN_PY=3.9: Eliminate helper in favor of PurePath.is_relative_to()
+        sub.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
+def _file_is_in_main_workspace_and_not_external(file_str: str):
+    file_path = pathlib.PurePath(file_str)
+    if file_path.is_absolute():
+        workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+        if not _is_relative_to(file_path, workspace_absolute):
+            return False
+        file_path = file_path.relative_to(workspace_absolute)
+    # You can now assume that the path is relative to the workspace.
+    # [Already assuming that relative paths are relative to the main workspace.]
+
+    # some/file.h, but not external/some/file.h
+    # also allows for things like bazel-out/generated/file.h
+    if _is_relative_to(file_path, pathlib.PurePath("external")):
+        return False
+
+    # ... but, ignore files in e.g. bazel-out/<configuration>/bin/external/
+    if file_path.parts[0] == 'bazel-out' and file_path.parts[3] == 'external':
+        return False
+
+    return True
+
+
+def _get_headers(compile_action, source_path: str):
     """Gets the headers used by a particular compile command.
 
     Relatively slow. Requires running the C preprocessor.
@@ -202,32 +234,27 @@ def _get_headers(compile_args: typing.List[str], source_path: str):
     # Hacky, but hopefully this is a temporary workaround for the clangd issue mentioned in the caller (https://github.com/clangd/clangd/issues/123)
     # Runs a modified version of the compile command to piggyback on the compiler's preprocessing and header searching.
 
-    # As an alternative approach, you might consider trying to get the headers by inspecing the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
+    # As an alternative approach, you might consider trying to get the headers by inspecting the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
-    # Rather than print a scary compiler error, warn gently
-    if not os.path.isfile(source_path):
-        if not _get_headers.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
-            _get_headers.has_logged_missing_file_error = True
-            print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_path}
-    It's probably a generated file, and you haven't yet run a build to generate it.
-    That's OK; your code doesn't even have to compile for this tool to work.
-    If you can, though, you might want to run a build of your code.
-        That way everything is generated, browsable and indexed for autocomplete.
-    However, if you have *already* built your code, and generated the missing file...
-        Please make sure you're supplying this tool with the same flags you use to build.
-        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
-        [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
-    Continuing gracefully...\033[0m""",  file=sys.stderr)
+    if {exclude_headers} == "all":
+        return set()
+    elif {exclude_headers} == "external" and compile_action.is_external:
+        # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
         return set()
 
-    if compile_args[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
-        return _get_headers_msvc(compile_args, source_path)
-    return _get_headers_gcc(compile_args, source_path)
-_get_headers.has_logged_missing_file_error = False
+    if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
+        headers = _get_headers_msvc(compile_action.arguments, source_path)
+    else:
+        headers = _get_headers_gcc(compile_action.arguments, source_path)
+
+    if {exclude_headers} == "external":
+        headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
+
+    return headers
 
 
-def _get_files(compile_args: typing.List[str]):
+def _get_files(compile_action):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
     # Bazel puts the source file being compiled after the -c flag, so we look for the source file there.
     # This is a strong assumption about Bazel internals, so we're taking special care to check that this condition holds with asserts. That way things don't fail silently if it changes some day.
@@ -240,17 +267,34 @@ def _get_files(compile_args: typing.List[str]):
                 # Concretely, the message usually has the form "action 'Compiling foo.cpp'"" -> foo.cpp. But it also has "action 'Compiling src/tools/launcher/dummy.cc [for tool]'" -> external/bazel_tools/src/tools/launcher/dummy.cc
                 # If we did ever go this route, you can join the output from aquery --output=text and --output=jsonproto by actionKey.
             # For more context on options and how this came to be, see https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37
-    compile_only_flag = '/c' if '/c' in compile_args else '-c' # For Windows/msvc support
-    source_index = compile_args.index(compile_only_flag) + 1
-    source_file = compile_args[source_index]
+    compile_only_flag = '/c' if '/c' in compile_action.arguments else '-c' # For Windows/msvc support
+    source_index = compile_action.arguments.index(compile_only_flag) + 1
+    source_file = compile_action.arguments[source_index]
     SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
-    assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found after {compile_only_flag} in {compile_args}"
-    assert source_index + 1 == len(compile_args) or compile_args[source_index + 1].startswith('-') or not compile_args[source_index + 1].endswith(SOURCE_EXTENSIONS), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_args}"
+    assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found after {compile_only_flag} in {compile_action.arguments}"
+    assert source_index + 1 == len(compile_action.arguments) or compile_action.arguments[source_index + 1].startswith('-') or not compile_action.arguments[source_index + 1].endswith(SOURCE_EXTENSIONS), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_action.arguments}"
+
+    # Warn gently about missing files
+    file_exists = os.path.isfile(source_file)
+    if not file_exists:
+        if not _get_files.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
+            _get_files.has_logged_missing_file_error = True
+            print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_file}
+    It's probably a generated file, and you haven't yet run a build to generate it.
+    That's OK; your code doesn't even have to compile for this tool to work.
+    If you can, though, you might want to run a build of your code.
+        That way everything is generated, browsable and indexed for autocomplete.
+    However, if you have *already* built your code, and generated the missing file...
+        Please make sure you're supplying this tool with the same flags you use to build.
+        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
+        [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
+    Continuing gracefully...\033[0m""",  file=sys.stderr)
 
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and just return the single source file.
-    return {source_file}, _get_headers(compile_args, source_file)
+    return {source_file}, _get_headers(compile_action, source_file) if file_exists else set()
+_get_files.has_logged_missing_file_error = False
 
 
 @functools.lru_cache(maxsize=None)
@@ -342,16 +386,14 @@ def _get_cpp_command_for_files(compile_action):
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
-    compile_args = compile_action.arguments
-
     # Patch command by platform
-    compile_args = _all_platform_patch(compile_args)
-    compile_args = _apple_platform_patch(compile_args)
+    compile_action.arguments = _all_platform_patch(compile_action.arguments)
+    compile_action.arguments = _apple_platform_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
-    source_files, header_files = _get_files(compile_args)
+    source_files, header_files = _get_files(compile_action)
 
-    return source_files, header_files, compile_args
+    return source_files, header_files, compile_action.arguments
 
 
 def _convert_compile_commands(aquery_output):
@@ -363,6 +405,24 @@ def _convert_compile_commands(aquery_output):
 
     Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific environment variables, etc.
     """
+
+    # Tag actions as external if we're going to need to know that later.
+    if {exclude_external_sources} or {exclude_headers} == "external":
+        targets_by_id = {target.id : target.label for target in aquery_output.targets}
+
+        def _amend_action_as_external(action):
+            """Tag action as external if it's created by an external target"""
+            target = targets_by_id[action.targetId] # Should always be present. KeyError as implicit assert.
+            assert not target.startswith("@//"), f"Expecting local targets to start with // in aquery output. Found @// for action {action}, target {target}"
+            assert not target.startswith("//external"), f"Expecting external targets will start with @. Found //external for action {action}, target {target}"
+
+            action.is_external = target.startswith("@")
+            return action
+
+        aquery_output.actions = (_amend_action_as_external(action) for action in aquery_output.actions)
+
+        if {exclude_external_sources}:
+            aquery_output.actions = filter(lambda action: not action.is_external, aquery_output.actions)
 
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
@@ -549,6 +609,7 @@ if __name__ == '__main__':
         {target_flag_pairs}
         # End:   template filled by Bazel
     ]
+
     compile_command_entries = []
     for (target, flags) in target_flag_pairs:
         compile_command_entries.extend(_get_commands(target, flags))

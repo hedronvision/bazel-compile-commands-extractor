@@ -79,7 +79,7 @@ That file describes how Bazel is compiling all the (Objective-)C(++) files. With
 
 We'll get it running and then move onto the next section while it whirrs away. But in the future, every time you want tooling (like autocomplete) to see new BUILD-file changes, rerun the command you chose below! Clangd will automatically pick up the changes.
 
-#### There are three common paths:
+#### There are four common paths:
 
 ##### 1. Have a relatively simple codebase, where every target builds without needing any additional configuration or flags?
 
@@ -126,6 +126,16 @@ refresh_compile_commands(
 
 Finally, you'll need to `bazel run :refresh_compile_commands`
 
+##### 4. Using ccls or another tool that, unlike clangd, doesn't want or need headers in compile_commands.json?
+
+Similar to the above, we'll use `refresh_compile_commands` for configuration, but instead of setting `targets`, set `exclude_headers = "all"`.
+
+### If you've got a very large project and compile_commands.json is taking a while to generate:
+
+Adding `exclude_external_sources = True` and `exclude_headers = "external"` can help, with some tradeoffs.
+
+For now, we'd suggest continuing on to set up clangd (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of clangd and/or this tool to index quickly, take a look at the docs at the top of [refresh_compile_commands.bzl](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
+
 ## Editor Setup — for autocomplete based on compile_commands.json
 
 ### VSCode
@@ -148,7 +158,7 @@ Add the following three separate entries to `"clangd.arguments"`:
 --query-driver=/**/*
 ```
 (Just copy each as written; VSCode will correctly expand ${workspaceFolder} for each workspace.)
-  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause clangd to interrogate Bazel's compiler wrappers to figure out which system headers they include by default.
+  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause clangd to interrogate Bazel's compiler wrappers to figure out which system headers are included by default.
   -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory by overriding *both* flags in your *workspace* settings
 
 
@@ -167,7 +177,7 @@ You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the 
 
 If you're using another editor, you'll need to follow the same rough steps as above: [get clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the flags.
 
-Once you've succeeded in setting up another editor—or set up clangtidy, or otherwise seen a way to improve this tool—we'd love it if you'd contribute what you know!
+Once you've succeeded in setting up another editor—or set up clang-tidy, or otherwise seen a way to improve this tool—we'd love it if you'd contribute what you know!
 
 ## "Smooth Edges" — what we've enjoyed using this for.
 

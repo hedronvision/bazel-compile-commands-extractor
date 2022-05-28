@@ -64,8 +64,8 @@ Why?
   - The community is great: clangd is very responsive on GitHub, it's integrated in many editors (including VSCode), and there are many deep pockets that need it and fund it.
 - The alternatives have key drawbacks:
   - The Microsoft VSCode plugin for C++ doesn't support Objective-C (which we need), would more tightly couple us to VSCode with a non-standard compile commands format, doesn't seem to be based on a compiler, and has had various issues parsing platform command flags.
-  - CCLS is a valiant effort similar to clangd, but it's mostly one guy. I'd bet on the LLVM ecosystem, but it is really good and competitive at the moment. Previously, it was ahead of clangd on indexing and performance.
-    - CQuery is an older (abandoned) effort that CCLS is a sequel to.
+  - ccls is a valiant effort similar to clangd, but it's mostly one guy. I'd bet on the LLVM ecosystem, but it is really good and competitive at the moment. Previously, it was ahead of clangd on indexing and performance.
+    - cquery is an older (abandoned) effort that ccls is a sequel to.
 
 
 ### Expansion opportunity into clang-tidy
