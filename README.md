@@ -132,7 +132,7 @@ Similar to the above, we'll use `refresh_compile_commands` for configuration, bu
 
 ### If you've got a very large project and compile_commands.json is taking a while to generate:
 
-Adding `exclude_external_sources = True` and `exclude_headers = "external"` can help, with some tradeoffs. 
+Adding `exclude_external_sources = True` and `exclude_headers = "external"` can help, with some tradeoffs.
 
 For now, we'd suggest continuing on to set up clangd (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of clangd and/or this tool to index quickly, take a look at the docs at the top of [refresh_compile_commands.bzl](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
 

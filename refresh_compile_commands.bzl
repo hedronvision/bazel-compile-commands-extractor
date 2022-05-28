@@ -32,11 +32,11 @@ refresh_compile_commands(
 
     # Using ccls or another tool that doesn't want or need headers in compile_commands.json?
         # exclude_headers = "all", # By default, we include entries for headers to support clangd, working around https://github.com/clangd/clangd/issues/123
-        # ^ excluding headers will speed up compile_commands.json generation *considerably* because we won't need to preprocess your code to figure out which headers you use. 
+        # ^ excluding headers will speed up compile_commands.json generation *considerably* because we won't need to preprocess your code to figure out which headers you use.
         # However, if you use clangd and are looking for speed, we strongly recommend you follow the instructions below instead, since clangd is going to regularly infer the wrong commands for headers and give you lots of annoyingly unnecessary red squigglies.
 
     # Need things to run faster? [Either for compile_commands.json generation or clangd indexing.]
-    # First: You might be able to refresh compile_commands.json slightly less often, making the current runtime okay. 
+    # First: You might be able to refresh compile_commands.json slightly less often, making the current runtime okay.
         # If you're adding files, clangd should make pretty decent guesses at completions, using commands from nearby files. And if you're deleting files, there's not a problem. So you may not need to rerun refresh.py on every change to BUILD files. Instead, maybe refresh becomes something you run every so often when you can spare the time, making the current runtime okay.
         # If that's not enough, read on.
     # If you don't care about the implementations of external dependencies:
@@ -49,7 +49,7 @@ refresh_compile_commands(
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
     # Willing to help improve things--and don't like the compromises above?
-        # There's a good opportunity to speed up header finding up with caching. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5 or the OPTIMNOTE comment in refresh.template.sh. And feel free to reach out--commenting on #5 or otherwise. 
+        # There's a good opportunity to speed up header finding up with caching. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5 or the OPTIMNOTE comment in refresh.template.sh. And feel free to reach out--commenting on #5 or otherwise.
 ```
 """
 

@@ -213,7 +213,7 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
         file_path = file_path.relative_to(workspace_absolute)
     # You can now assume that the path is relative to the workspace.
     # [Already assuming that relative paths are relative to the main workspace.]
-    
+
     # some/file.h, but not external/some/file.h
     # also allows for things like bazel-out/generated/file.h
     if _is_relative_to(file_path, pathlib.PurePath("external")):
@@ -221,7 +221,7 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
 
     # ... but, ignore files in e.g. bazel-out/<configuration>/bin/external/
     if file_path.parts[0] == 'bazel-out' and file_path.parts[3] == 'external':
-        return False 
+        return False
 
     return True
 
