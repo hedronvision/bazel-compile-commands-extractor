@@ -28,6 +28,7 @@ import pathlib
 import re
 import shlex
 import subprocess
+import tempfile
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 
@@ -121,6 +122,73 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path_for_sanity_chec
     return headers
 
 
+def windows_list2cmdline(seq):
+    """
+    Copied from list2cmdline in https://github.com/python/cpython/blob/main/Lib/subprocess.py because we need it but it's not exported as part of the public API.
+
+    Translate a sequence of arguments into a command line
+    string, using the same rules as the MS C runtime:
+    1) Arguments are delimited by white space, which is either a
+       space or a tab.
+    2) A string surrounded by double quotation marks is
+       interpreted as a single argument, regardless of white space
+       contained within.  A quoted string can be embedded in an
+       argument.
+    3) A double quotation mark preceded by a backslash is
+       interpreted as a literal double quotation mark.
+    4) Backslashes are interpreted literally, unless they
+       immediately precede a double quotation mark.
+    5) If backslashes immediately precede a double quotation mark,
+       every pair of backslashes is interpreted as a literal
+       backslash.  If the number of backslashes is odd, the last
+       backslash escapes the next double quotation mark as
+       described in rule 3.
+    """
+
+    # See
+    # http://msdn.microsoft.com/en-us/library/17w5ykft.aspx
+    # or search http://msdn.microsoft.com for
+    # "Parsing C++ Command-Line Arguments"
+    result = []
+    needquote = False
+    for arg in map(os.fsdecode, seq):
+        bs_buf = []
+
+        # Add a space to separate this argument from the others
+        if result:
+            result.append(' ')
+
+        needquote = (" " in arg) or ("\t" in arg) or not arg
+        if needquote:
+            result.append('"')
+
+        for c in arg:
+            if c == '\\':
+                # Don't know if we need to double yet.
+                bs_buf.append(c)
+            elif c == '"':
+                # Double backslashes.
+                result.append('\\' * len(bs_buf)*2)
+                bs_buf = []
+                result.append('\\"')
+            else:
+                # Normal char
+                if bs_buf:
+                    result.extend(bs_buf)
+                    bs_buf = []
+                result.append(c)
+
+        # Add remaining backslashes, if any.
+        if bs_buf:
+            result.extend(bs_buf)
+
+        if needquote:
+            result.extend(bs_buf)
+            result.append('"')
+
+    return ''.join(result)
+
+
 def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
     """Gets the headers used by a particular compile command that uses msvc argument formatting (including clang-cl.)
 
@@ -147,14 +215,35 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
         # End:   template filled by Bazel
     ))
 
-    header_search_process = subprocess.run(
-        header_cmd,
-        stderr=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        env=environment,
-        encoding=locale.getpreferredencoding(),
-        check=False, # We explicitly ignore errors and carry on.
-    )
+    def _search_headers(command):
+        return subprocess.run(
+            command,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            env=environment,
+            encoding=locale.getpreferredencoding(),
+            check=False, # We explicitly ignore errors and carry on.
+        )
+
+    try:
+        header_search_process = _search_headers(header_cmd)
+    except WindowsError as e:
+        # Handle case where command line length is exceeded and we need a param file.
+            # See https://docs.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
+        # We handle the error instead of calculating the command length because the length includes escaping internal to the subprocess.run call
+        if e.winerror == 206:  # Thrown when command is too long, despite the error message being "The filename or extension is too long". For a few more details see also https://stackoverflow.com/questions/2381241/what-is-the-subprocess-popen-max-length-of-the-args-parameter
+            # Write header_cmd to a temporary file, so we can use it as a parameter file to cl.exe.
+            # E.g. cl.exe @params_file.txt
+            # tempfile.NamedTemporaryFile doesn't work because cl.exe can't open it--as the Python docs would indicate--so we have to do cleanup ourselves.
+            fd, path = tempfile.mkstemp(text=True)
+            try:
+                os.write(fd, windows_list2cmdline(header_cmd[1:]).encode()) # should skip cl.exe the 1st line.
+                os.close(fd)
+                header_search_process = _search_headers([header_cmd[0], f'@{path}'])
+            finally: # Safe cleanup even in the event of an error
+                os.remove(path)
+        else: # Some other WindowsError we didn't mean to catch.
+            raise
 
     # Based on the locale, `cl.exe` will emit different marker strings. See also https://github.com/ninja-build/ninja/issues/613#issuecomment-885185024 and https://github.com/bazelbuild/bazel/pull/7966.
     # We can't just set environment['VSLANG'] = "1033" (English) and be done with it, because we can't assume the user has the English language pack installed.
@@ -268,6 +357,7 @@ def _get_files(compile_action):
                 # If we did ever go this route, you can join the output from aquery --output=text and --output=jsonproto by actionKey.
             # For more context on options and how this came to be, see https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37
     compile_only_flag = '/c' if '/c' in compile_action.arguments else '-c' # For Windows/msvc support
+    assert compile_only_flag in compile_action.arguments, f"/c or -c, required for parsing sources, is not found in compile args: {compile_action.arguments}"
     source_index = compile_action.arguments.index(compile_only_flag) + 1
     source_file = compile_action.arguments[source_index]
     SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
@@ -474,6 +564,13 @@ def _get_commands(target: str, flags: str):
         # Shush logging. Just for readability.
         '--ui_event_filters=-info',
         '--noshow_progress',
+        # Disable param files, which would obscure compile actions
+        # Mostly, people enable param files on Windows to avoid the relatively short command length limit.
+            # For more, see compiler_param_file in https://bazel.build/docs/windows
+            # They are, however, technically supported on other platforms/compilers.
+        # That's all well and good, but param files would prevent us from seeing compile actions before the param files had been generated by compilation.
+        # Since clangd has no such length limit, we'll disable param files for our aquery run.
+        '--features=-compiler_param_file',
     ] + shlex.split(flags) + sys.argv[1:]
 
     aquery_process = subprocess.run(
@@ -555,7 +652,7 @@ def _ensure_external_workspaces_link_exists():
         else:
             source.symlink_to(dest, target_is_directory=True)
         print(f"""\033[0;32m>>> Automatically added //external workspace link:
-    This link makes it easy for you—and for build tooling—to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox.
+    This link makes it easy for you--and for build tooling--to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox.
     It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.\033[0m""", file=sys.stderr)
 
 
