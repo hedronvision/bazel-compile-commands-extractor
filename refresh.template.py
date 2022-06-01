@@ -68,12 +68,42 @@ def _print_header_finding_warning_once():
 _print_header_finding_warning_once.has_logged = False
 
 
-def _get_headers_gcc(compile_args: typing.List[str], source_path_for_sanity_check: typing.Optional[str] = None):
+def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanity_check: typing.Optional[str] = None):
+    """Parses a set of headers from the contents of a .d makefile dependency file created with the -M* or -dependencies option to gcc/clang.
+
+    See https://clang.llvm.org/docs/ClangCommandLineReference.html#dependency-file-generation for more.
+    """
+    split = d_file_content.replace('\\\n', '').split() # Undo shell line wrapping bc it's not consistent (depends on file name length). Also, makefiles don't seem to really support escaping spaces, so we'll punt that case https://stackoverflow.com/questions/30687828/how-to-escape-spaces-inside-a-makefile
+    assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Zeroth entry should be the object file. Output:\n" + d_file_content
+    assert source_path_for_sanity_check is None or split[1].endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. First entry should be the source file. Output:\n" + d_file_content
+    headers = split[2:] # Remove .o and source entries (since they're not headers). Verified above
+    headers = set(headers) # Make unique. GCC sometimes emits duplicate entries https://github.com/hedronvision/bazel-compile-commands-extractor/issues/7#issuecomment-975109458
+    return headers
+
+
+def _get_headers_gcc(compile_args: typing.List[str], source_path: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
 
     Relatively slow. Requires running the C preprocessor.
     """
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
+
+    # Check to see if bazel has a fresh cache of the included headers
+    for i, arg in enumerate(compile_args):
+        if arg.startswith('-MF'):
+            if len(arg) > 3: # Either appended, like -MF<file>
+                dep_file_path = arg[:3]
+            else: # Or after as a separate arg, like -MF <file>
+                dep_file_path = compile_args[i+1]
+            if os.path.isfile(dep_file_path):
+                dep_file_last_modified = os.path.getmtime(dep_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
+                with open(dep_file_path) as dep_file:
+                    dep_file_contents = dep_file.read()
+                headers = _parse_headers_from_makefile_deps(dep_file_contents)
+                # Check freshness of dep file by making sure none of the files in it have been modified since its creation.
+                if os.path.getmtime(source_path) <= dep_file_last_modified and all(os.path.isfile(header_path) and os.path.getmtime(header_path) <= dep_file_last_modified for header_path in headers):
+                    return headers # Fresh cache! exit early.
+            break
 
     # Strip out existing dependency file generation that could interfere with ours.
     # Clang on Apple doesn't let later flags override earlier ones, unfortunately.
@@ -101,25 +131,17 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path_for_sanity_chec
         encoding=locale.getpreferredencoding(),
         check=False, # We explicitly ignore errors and carry on.
     )
-    headers_makefile_out = header_search_process.stdout
 
     # Tolerate failure gracefully--during editing the code may not compile!
     if header_search_process.stderr:
         _print_header_finding_warning_once()
         print(header_search_process.stderr, file=sys.stderr, end='') # Captured with capture_output and dumped explicitly to avoid interlaced output.
 
-    if not headers_makefile_out: # Worst case, we couldn't get the headers,
+    if not header_search_process.stdout: # Worst case, we couldn't get the headers,
         return set()
     # But often, we can get the headers, despite the error.
 
-    # Parse the makefile output.
-    split = headers_makefile_out.replace('\\\n', '').split() # Undo shell line wrapping bc it's not consistent (depends on file name length)
-    assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Zeroth entry should be the object file. Output:\n" + headers_makefile_out
-    assert source_path_for_sanity_check is None or split[1].endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. First entry should be the source file. Output:\n" + headers_makefile_out
-    headers = split[2:] # Remove .o and source entries (since they're not headers). Verified above
-    headers = set(headers) # Make unique. GCC sometimes emits duplicate entries https://github.com/hedronvision/bazel-compile-commands-extractor/issues/7#issuecomment-975109458
-
-    return headers
+    return _parse_headers_from_makefile_deps(header_search_process.stdout)
 
 
 def windows_list2cmdline(seq):
