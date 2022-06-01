@@ -88,7 +88,8 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str):
     """
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
 
-    # Check to see if bazel has a fresh cache of the included headers
+    # Check to see if Bazel has an (approximately) fresh cache of the included headers, and if so, use them to avoid a slow preprocessing step.
+        # Not totally perfect, because flags could have changed since the last build and changed the include graph, but should be good enough. I don't think there's an API to check this, but we'd want to check that the action cache holds the same ActionKey.
     for i, arg in enumerate(compile_args):
         if arg.startswith('-MF'):
             if len(arg) > 3: # Either appended, like -MF<file>
@@ -101,7 +102,8 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str):
                     dep_file_contents = dep_file.read()
                 headers = _parse_headers_from_makefile_deps(dep_file_contents)
                 # Check freshness of dep file by making sure none of the files in it have been modified since its creation.
-                if os.path.getmtime(source_path) <= dep_file_last_modified and all(os.path.isfile(header_path) and os.path.getmtime(header_path) <= dep_file_last_modified for header_path in headers):
+                # If they don't exist...then they somehow weren't generated in the build that created the depfile. We therefore won't get any fresher by building, so we'll treat that as good enough.
+                if os.path.getmtime(source_path) <= dep_file_last_modified and all(not os.path.isfile(header_path) or os.path.getmtime(header_path) <= dep_file_last_modified for header_path in headers):
                     return headers # Fresh cache! exit early.
             break
 
