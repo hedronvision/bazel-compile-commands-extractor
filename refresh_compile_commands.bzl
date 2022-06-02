@@ -48,8 +48,6 @@ refresh_compile_commands(
         # exclude_headers = "external",
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
-    # Willing to help improve things--and don't like the compromises above?
-        # There's a good opportunity to speed up header finding up with caching. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5 or the OPTIMNOTE comment in refresh.template.sh. And feel free to reach out--commenting on #5 or otherwise.
 ```
 """
 
