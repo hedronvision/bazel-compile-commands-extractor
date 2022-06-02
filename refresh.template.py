@@ -69,10 +69,35 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     return headers
 
 
+@functools.lru_cache(maxsize=None)
+def _get_cached_adjusted_modified_time(path: str):
+    """A fast (cached) way to get the modified time of files.
+
+    Otherwise, most of our runtime in the cached case ends up being mtime stat'ing the same headers over and over again.
+
+    Intended for checking whether header include caches are fresh.
+    Contains some adjustments to make checking as simple as comparing modified times.
+    """
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:  # File doesn't exist.
+        return 0  # For our purposes, doesn't exist means we don't have a newer version, so we'll return a very old time that'll always qualify the cache as fresh in a comparison.
+        # Two cases here:
+        # (1) Somehow it weren't generated in the build that created the depfile. We therefore won't get any fresher by building, so we'll treat that as good enough.
+        # (2) Or it's been deleted since we last cached, in which case we'd rather use the cached version if its otherwise fresh.
+
+    # Bazel internal sources have timestamps 10y in the future as part of an mechanism to detect and prevent modification, so we'll similarly ignore those, since they shouldn't be changing.
+    if mtime > BAZEL_INTERNAL_SOURCE_CUTOFF:
+        return 0
+
+    return mtime
+BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365  # 1year in to the future. Safely below bazel's 10y margin, but high enough that no sane normal file should be past this.
+
+
 def _get_headers_gcc(compile_args: typing.List[str], source_path: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
 
-    Relatively slow. Requires running the C preprocessor.
+    Relatively slow. Requires running the C preprocessor if we can't hit Bazel's cache.
     """
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
 
@@ -90,12 +115,8 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str):
                     dep_file_contents = dep_file.read()
                 headers = _parse_headers_from_makefile_deps(dep_file_contents)
                 # Check freshness of dep file by making sure none of the files in it have been modified since its creation.
-                # If they don't exist...then they somehow weren't generated in the build that created the depfile. We therefore won't get any fresher by building, so we'll treat that as good enough.
-                # (And, special case: Bazel internal sources have timestamps 10y in the future, so we'll ignore those)
-                source_mtime = os.path.getmtime(source_path)
-                if (source_mtime <= dep_file_last_modified
-                    and all(not os.path.isfile(header_path) or os.path.getmtime(header_path) <= dep_file_last_modified for header_path in headers)
-                    or source_mtime > time.time() + 60*60*24*365):
+                if (_get_cached_adjusted_modified_time(source_path) <= dep_file_last_modified
+                    and all(_get_cached_adjusted_modified_time(header_path) <= dep_file_last_modified for header_path in headers)):
                     return headers # Fresh cache! exit early.
             break
 
@@ -373,12 +394,9 @@ def _get_headers(compile_action, source_path: str):
             # Check freshness of cache
                 # Action key validates that it corresponds to the same action arguments
                 # And we also need to check that there aren't newer versions of the files
-                # (And, special case: Bazel internal sources have timestamps 10y in the future, so we'll ignore those)
-            source_mtime = os.path.getmtime(source_path)
             if (action_key == compile_action.actionKey
-                and (source_mtime <= cache_last_modified
-                    and all(not os.path.isfile(header_path) or os.path.getmtime(header_path) <= cache_last_modified for header_path in headers)
-                    or source_mtime > time.time() + 60*60*24*365)):
+                and _get_cached_adjusted_modified_time(source_path) <= cache_last_modified
+                and all(_get_cached_adjusted_modified_time(header_path) <= cache_last_modified for header_path in headers)):
                 return set(headers)
 
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
@@ -498,7 +516,7 @@ def _apple_platform_patch(compile_args: typing.List[str]):
         # We have to manually substitute out Bazel's macros so clang can parse the command
         # Code this mirrors is in https://github.com/bazelbuild/bazel/blob/master/tools/osx/crosstool/wrapped_clang.cc
         # Not complete--we're just swapping out the essentials, because there seems to be considerable turnover in the hacks they have in the wrapper.
-        compile_args = [arg.replace('DEBUG_PREFIX_MAP_PWD', "-fdebug-prefix-map="+os.getcwd()) for arg in compile_args]
+        compile_args = [arg for arg in compile_args if not arg.startswith('DEBUG_PREFIX_MAP_PWD') or arg == 'OSO_PREFIX_MAP_PWD'] # No need for debug prefix maps if compiling in place, not that we're compiling anyway.
         # We also have to manually figure out the values of SDKROOT and DEVELOPER_DIR, since they're missing from the environment variables Bazel provides.
         # Filed Bazel issue about the missing environment variables: https://github.com/bazelbuild/bazel/issues/12852
         compile_args = [arg.replace('__BAZEL_XCODE_DEVELOPER_DIR__', _get_apple_DEVELOPER_DIR()) for arg in compile_args]
