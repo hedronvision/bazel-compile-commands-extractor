@@ -29,21 +29,9 @@ import re
 import shlex
 import subprocess
 import tempfile
+import time
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
-
-
-# OPTIMNOTE: Most of the runtime of this file--and the output file size--are working around https://github.com/clangd/clangd/issues/123. To work around we have to run clang's preprocessor on files to determine their headers and emit compile commands entries for those headers.
-# There are some optimization that would improve speed. Here are the ones we've thought of in case we ever want them. But we we anticipate that this problem will be temporary; clangd improves fast.
-    # The simplest would be to only search for headers once per source file.
-        # Downside: We could miss headers conditionally included, e.g., by platform.
-        # Implementation: skip source files we've already seen in _get_files, shortcutting a bunch of slow preprocessor runs in _get_headers and output. We'd need a threadsafe set, or one set per thread, because header finding is already multithreaded for speed (same magnitude speed win as single-threaded set).
-        # Anticipated speedup: ~2x (30s to 15s.)
-    # A better one would be to cache include information.
-        # We could check to see if Bazel has cached .d files listing the dependencies and use those instead of preprocessing everything to regenerate them.
-            # If all the files listed in the .d file have older last-modified dates than the .d file itself, this should be safe. We'd want to check that bazel isn't 0-timestamping generated files, though.
-        # We could also write .d files when needed, saving work between runs.
-        # Maybe there's a good way of doing the equivalent on Windows, too, maybe using /sourceDependencies
 
 
 def _print_header_finding_warning_once():
@@ -103,7 +91,11 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str):
                 headers = _parse_headers_from_makefile_deps(dep_file_contents)
                 # Check freshness of dep file by making sure none of the files in it have been modified since its creation.
                 # If they don't exist...then they somehow weren't generated in the build that created the depfile. We therefore won't get any fresher by building, so we'll treat that as good enough.
-                if os.path.getmtime(source_path) <= dep_file_last_modified and all(not os.path.isfile(header_path) or os.path.getmtime(header_path) <= dep_file_last_modified for header_path in headers):
+                # (And, special case: Bazel internal sources have timestamps 10y in the future, so we'll ignore those)
+                source_mtime = os.path.getmtime(source_path)
+                if (source_mtime <= dep_file_last_modified
+                    and all(not os.path.isfile(header_path) or os.path.getmtime(header_path) <= dep_file_last_modified for header_path in headers)
+                    or source_mtime > time.time() + 60*60*24*365):
                     return headers # Fresh cache! exit early.
             break
 
@@ -356,15 +348,55 @@ def _get_headers(compile_action, source_path: str):
         # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
         return set()
 
+    output_file = None
+    for i, arg in enumerate(compile_action.arguments):
+        if arg == '-o': # clang/gcc. Docs https://clang.llvm.org/docs/ClangCommandLineReference.html
+            output_file = compile_action.arguments[i+1]
+        elif arg.startswith('/Fo'): # MSVC *and clang*. MSVC docs https://docs.microsoft.com/en-us/cpp/build/reference/compiler-options-listed-alphabetically?view=msvc-170
+            output_file = arg[3:]
+    # Since our output file parsing isn't complete, fall back on a warning message to solicit help.
+    # A more full (if more involved) solution would be to get the primaryOutput for the action from the aquery output, but this should handle the cases Bazel emits.
+    if not output_file and not _get_headers.has_logged:
+        _get_headers.has_logged = True
+        print(f"""\033[0;33m>>> Please file an issue containing the following: Output file not detected in arguments {compile_action.arguments}.
+    Not a big deal, things will work but be a little slower.
+    Thanks for your help!
+    Continuing gracefully...\033[0m""",  file=sys.stderr)
+
+    # Check for a fresh cache of headers
+    if output_file:
+        cache_file_path = output_file + ".hedron.compile-commands.headers" # Embed our cache in bazel's
+        if os.path.isfile(cache_file_path):
+            cache_last_modified = os.path.getmtime(cache_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
+            with open(cache_file_path) as cache_file:
+                action_key, headers = json.load(cache_file)
+            # Check freshness of cache
+                # Action key validates that it corresponds to the same action arguments
+                # And we also need to check that there aren't newer versions of the files
+                # (And, special case: Bazel internal sources have timestamps 10y in the future, so we'll ignore those)
+            source_mtime = os.path.getmtime(source_path)
+            if (action_key == compile_action.actionKey
+                and (source_mtime <= cache_last_modified
+                    and all(not os.path.isfile(header_path) or os.path.getmtime(header_path) <= cache_last_modified for header_path in headers)
+                    or source_mtime > time.time() + 60*60*24*365)):
+                return set(headers)
+
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers = _get_headers_msvc(compile_action.arguments, source_path)
     else:
         headers = _get_headers_gcc(compile_action.arguments, source_path)
 
+    # Cache for future use
+    if output_file:
+        os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
+        with open(cache_file_path, 'w') as cache_file:
+            json.dump((compile_action.actionKey, list(headers)), cache_file)
+
     if {exclude_headers} == "external":
         headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
 
     return headers
+_get_headers.has_logged = False
 
 
 def _get_files(compile_action):
