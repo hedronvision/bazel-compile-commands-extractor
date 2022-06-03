@@ -56,6 +56,27 @@ def _print_header_finding_warning_once():
 _print_header_finding_warning_once.has_logged = False
 
 
+@functools.lru_cache(maxsize=None)
+def _get_bazel_cached_action_keys():
+    action_cache_process = subprocess.run(
+        ['bazel', 'dump', '--action_cache'],
+        capture_output=True,
+        encoding=locale.getpreferredencoding(),
+        check=True, # Should always succeed.
+    )
+
+    action_keys = set()
+    for line in action_cache_process.stdout.splitlines():
+        line = line.strip()
+        if line.startswith('actionKey = '):
+            action_keys.add(line[12:]) # Remainder after actionKey =
+
+    # There should always be some--at least from building this file!
+    assert action_keys, f"Failed to get action keys from Bazel.\nPlease file an issue with some of the following log:\n"+action_cache_process.stdout
+
+    return action_keys
+
+
 def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanity_check: typing.Optional[str] = None):
     """Parses a set of headers from the contents of a .d makefile dependency file created with the -M* or -dependencies option to gcc/clang.
 
@@ -94,7 +115,7 @@ def _get_cached_adjusted_modified_time(path: str):
 BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365  # 1year in to the future. Safely below bazel's 10y margin, but high enough that no sane normal file should be past this.
 
 
-def _get_headers_gcc(compile_args: typing.List[str], source_path: str):
+def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
 
     Relatively slow. Requires running the C preprocessor if we can't hit Bazel's cache.
@@ -102,23 +123,23 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str):
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
 
     # Check to see if Bazel has an (approximately) fresh cache of the included headers, and if so, use them to avoid a slow preprocessing step.
-        # Not totally perfect, because flags could have changed since the last build and changed the include graph, but should be good enough. I don't think there's an API to check this, but we'd want to check that the action cache holds the same ActionKey.
-    for i, arg in enumerate(compile_args):
-        if arg.startswith('-MF'):
-            if len(arg) > 3: # Either appended, like -MF<file>
-                dep_file_path = arg[:3]
-            else: # Or after as a separate arg, like -MF <file>
-                dep_file_path = compile_args[i+1]
-            if os.path.isfile(dep_file_path):
-                dep_file_last_modified = os.path.getmtime(dep_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
-                with open(dep_file_path) as dep_file:
-                    dep_file_contents = dep_file.read()
-                headers = _parse_headers_from_makefile_deps(dep_file_contents)
-                # Check freshness of dep file by making sure none of the files in it have been modified since its creation.
-                if (_get_cached_adjusted_modified_time(source_path) <= dep_file_last_modified
-                    and all(_get_cached_adjusted_modified_time(header_path) <= dep_file_last_modified for header_path in headers)):
-                    return headers # Fresh cache! exit early.
-            break
+    if action_key in _get_bazel_cached_action_keys():
+        for i, arg in enumerate(compile_args):
+            if arg.startswith('-MF'):
+                if len(arg) > 3: # Either appended, like -MF<file>
+                    dep_file_path = arg[:3]
+                else: # Or after as a separate arg, like -MF <file>
+                    dep_file_path = compile_args[i+1]
+                if os.path.isfile(dep_file_path):
+                    dep_file_last_modified = os.path.getmtime(dep_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
+                    with open(dep_file_path) as dep_file:
+                        dep_file_contents = dep_file.read()
+                    headers = _parse_headers_from_makefile_deps(dep_file_contents)
+                    # Check freshness of dep file by making sure none of the files in it have been modified since its creation.
+                    if (_get_cached_adjusted_modified_time(source_path) <= dep_file_last_modified
+                        and all(_get_cached_adjusted_modified_time(header_path) <= dep_file_last_modified for header_path in headers)):
+                        return headers # Fresh cache! exit early.
+                break
 
     # Strip out existing dependency file generation that could interfere with ours.
     # Clang on Apple doesn't let later flags override earlier ones, unfortunately.
@@ -402,7 +423,7 @@ def _get_headers(compile_action, source_path: str):
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers = _get_headers_msvc(compile_action.arguments, source_path)
     else:
-        headers = _get_headers_gcc(compile_action.arguments, source_path)
+        headers = _get_headers_gcc(compile_action.arguments, source_path, compile_action.actionKey)
 
     # Cache for future use
     if output_file:
