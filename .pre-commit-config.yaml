@@ -6,5 +6,11 @@ repos:
     hooks:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
+    -   id: check-ast
+    -   id: debug-statements
+    -   id: mixed-line-ending
+    -   id: check-case-conflict
+    -   id: fix-byte-order-marker
+    -   id: check-docstring-first
     -   id: check-yaml
     -   id: check-added-large-files
