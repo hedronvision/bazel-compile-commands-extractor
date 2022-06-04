@@ -58,6 +58,7 @@ _print_header_finding_warning_once.has_logged = False
 
 @functools.lru_cache(maxsize=None)
 def _get_bazel_cached_action_keys():
+    """Gets the set of actionKeys cached in bazel-out."""
     action_cache_process = subprocess.run(
         ['bazel', 'dump', '--action_cache'],
         capture_output=True,
@@ -123,7 +124,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
 
     # Check to see if Bazel has an (approximately) fresh cache of the included headers, and if so, use them to avoid a slow preprocessing step.
-    if action_key in _get_bazel_cached_action_keys():
+    if action_key in _get_bazel_cached_action_keys():  # Safe because Bazel only holds one cached action key per path, and the key contains the path.
         for i, arg in enumerate(compile_args):
             if arg.startswith('-MF'):
                 if len(arg) > 3: # Either appended, like -MF<file>
