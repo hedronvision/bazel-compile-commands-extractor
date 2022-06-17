@@ -83,8 +83,11 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
 
     See https://clang.llvm.org/docs/ClangCommandLineReference.html#dependency-file-generation for more.
     """
-    split = d_file_content.replace('\\\n', '').split() # Undo shell line wrapping bc it's not consistent (depends on file name length). Also, makefiles don't seem to really support escaping spaces, so we'll punt that case https://stackoverflow.com/questions/30687828/how-to-escape-spaces-inside-a-makefile
-    assert split[0].endswith('.o:'), "Something went wrong in makefile parsing to get headers. Zeroth entry should be the object file. Output:\n" + d_file_content
+    colon_idx = d_file_content.index(':')
+    target = d_file_content[:colon_idx].strip()
+    split = [target]
+    split += d_file_content[colon_idx+1:].replace('\\\n', '').split() # Undo shell line wrapping bc it's not consistent (depends on file name length). Also, makefiles don't seem to really support escaping spaces, so we'll punt that case https://stackoverflow.com/questions/30687828/how-to-escape-spaces-inside-a-makefile
+    assert split[0].endswith('.o'), "Something went wrong in makefile parsing to get headers. Zeroth entry should be the object file. Output:\n" + d_file_content
     assert source_path_for_sanity_check is None or split[1].endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. First entry should be the source file. Output:\n" + d_file_content
     headers = split[2:] # Remove .o and source entries (since they're not headers). Verified above
     headers = set(headers) # Make unique. GCC sometimes emits duplicate entries https://github.com/hedronvision/bazel-compile-commands-extractor/issues/7#issuecomment-975109458
