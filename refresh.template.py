@@ -406,7 +406,7 @@ def _get_headers(compile_action, source_path: str):
     if not output_file and not _get_headers.has_logged:
         _get_headers.has_logged = True
         print(f"""\033[0;33m>>> Please file an issue containing the following: Output file not detected in arguments {compile_action.arguments}.
-    Not a big deal, things will work but be a little slower.
+    Not a big deal; things will work but will be a little slower.
     Thanks for your help!
     Continuing gracefully...\033[0m""",  file=sys.stderr)
 
@@ -415,15 +415,27 @@ def _get_headers(compile_action, source_path: str):
         cache_file_path = output_file + ".hedron.compile-commands.headers" # Embed our cache in bazel's
         if os.path.isfile(cache_file_path):
             cache_last_modified = os.path.getmtime(cache_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
-            with open(cache_file_path) as cache_file:
-                action_key, headers = json.load(cache_file)
-            # Check freshness of cache
-                # Action key validates that it corresponds to the same action arguments
-                # And we also need to check that there aren't newer versions of the files
-            if (action_key == compile_action.actionKey
-                and _get_cached_adjusted_modified_time(source_path) <= cache_last_modified
-                and all(_get_cached_adjusted_modified_time(header_path) <= cache_last_modified for header_path in headers)):
-                return set(headers)
+            try:
+                with open(cache_file_path) as cache_file:
+                    action_key, headers = json.load(cache_file)
+            except json.JSONDecodeError:
+                # Corrupted cache, which can happen if, for example, the user kills the program, since writes aren't atomic.
+                # For a real instance, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/60
+                with open(cache_file_path) as cache_file:
+                    print(f"""\033[0;33m>>> Ignoring corrupted header cache {cache_file_path}
+    This is okay if you manually killed this tool earlier.
+    But if this message is appearing spontaneously or frequently, please file an issue containing the contents of the corrupted cache, which we'll print below before the cache is overwritten.
+    {cache_file.read()}
+    Thanks for your help!
+    Continuing gracefully...\033[0m""",  file=sys.stderr)
+            else:
+                # Check cache freshness.
+                    # Action key validates that it corresponds to the same action arguments
+                    # And we also need to check that there aren't newer versions of the files
+                if (action_key == compile_action.actionKey
+                    and _get_cached_adjusted_modified_time(source_path) <= cache_last_modified
+                    and all(_get_cached_adjusted_modified_time(header_path) <= cache_last_modified for header_path in headers)):
+                    return set(headers)
 
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers = _get_headers_msvc(compile_action.arguments, source_path)
