@@ -20,7 +20,7 @@ Pretty great with only very minor rough edges. We use this every day and love it
 
 If there haven't been commits in a while, it's because of stability, not neglect. This is in daily use inside Hedron.
 
-For everyday use, we'd recommend using this rather than the platform-specific IDE adapters (like Tulsi or ASwB), except the times when you need some platform-editor-specific feature (e.g. Apple's NextStep Interface Builder) that's not ever going to be supported in a cross-platform editor.
+For everyday use, we'd recommend using this rather than the platform-specific IDE adapters (like Tulsi or the ASwB/CLion plugin to the extent it works), except the times when you need some platform-editor-specific feature (e.g. Apple's NextStep Interface Builder) that's not ever going to be supported in a cross-platform editor.
 
 ### Outside Testimonials
 
@@ -161,11 +161,12 @@ Add the following three separate entries to `"clangd.arguments"`:
   -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause clangd to interrogate Bazel's compiler wrappers to figure out which system headers are included by default.
   -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory by overriding *both* flags in your *workspace* settings
 
-
+<!-- At least until https://github.com/clangd/vscode-clangd/issues/138 is resolved. -->
 Turn on: Clangd: Check Updates
-  - At least until https://github.com/clangd/vscode-clangd/issues/138 is resolved. You always want the latest! New great stuff is landing in clangd and it's backwards compatible.
+  -  You always want the latest! New great features and fixes are always getting added to clangd.
+  -  We'll assume you always have the latest and aren't using an old version nor Apple's clangd intended for Xcode. While we can and do make great efforts to workaround issues in the current version of clangd, we remove those workarounds when clangd fixes them upstream. This keeps the code simple and development velocity fast!
 
-If afterwards clangd doesn't prompt you to download the actual clangd server binary, hit (CMD/CTRL+SHIFT+P)->Download language Server.
+If turning on automatic updates doesn't prompt you to download the actual clangd server binary, hit (CMD/CTRL+SHIFT+P)->Download language Server.
 
 You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the plugin to load. The clangd download should prompt you to do so when it completes.
 
@@ -175,9 +176,9 @@ You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the 
 
 ### Other Editors
 
-If you're using another editor, you'll need to follow the same rough steps as above: [get clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the flags.
+If you're using another editor, you'll need to follow the same rough steps as above: [get the latest version of clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the same flags as VSCode. We know people have had an easy time setting up this tool with other editors, like Emacs, for example.
 
-Once you've succeeded in setting up another editor—or set up clang-tidy, or otherwise seen a way to improve this tool—we'd love it if you'd contribute what you know!
+Once you've succeeded in setting up another editor—or set up clang-tidy, or otherwise seen anything that might improve this readme—we'd love it if you'd give back and contribute what you know! Just edit this readme on GitHub and file a PR :)
 
 ## "Smooth Edges" — what we've enjoyed using this for.
 
