@@ -776,6 +776,7 @@ def _ensure_gitignore_entries():
         shell=True, # Unifies error case where git isn't even installed by making it also a non-zero exit code w/ no exception
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         ).returncode): # non-zero indicates not in git repository
+        # Note that we're also handling the case where the bazel workspace is nested inside the git repository; it's not enough to just check for the presence of a .git directory
         return
 
     needed_entries = [ # Pattern followed by an explainer comment that we'll add to the gitignore
