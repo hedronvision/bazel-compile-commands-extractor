@@ -29,6 +29,7 @@ refresh_compile_commands(
         # If you don't specify a target, that's fine (if it works for you); compile_commands.json will default to containing commands used in building all possible targets. But in that case, just bazel run @hedron_compile_commands//:refresh_all
         # Wildcard target patterns (..., *, :all) patterns *are* allowed, like in bazel build
             # For more, see https://docs.bazel.build/versions/main/guide.html#specifying-targets-to-build
+        # As are additional targets (+) and subtractions (-), like in bazel query https://docs.bazel.build/versions/main/query.html#expressions
 
     # Using ccls or another tool that doesn't want or need headers in compile_commands.json?
         # exclude_headers = "all", # By default, we include entries for headers to support clangd, working around https://github.com/clangd/clangd/issues/123
