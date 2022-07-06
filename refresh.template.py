@@ -67,13 +67,18 @@ def _get_bazel_cached_action_keys():
     )
 
     action_keys = set()
+    marked_as_empty = False # Sometimes the action cache is empty...despite having built this file, so we have to handle that case. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/64
     for line in action_cache_process.stdout.splitlines():
         line = line.strip()
         if line.startswith('actionKey = '):
             action_keys.add(line[12:]) # Remainder after actionKey =
+        elif line.startswith('Action cache (0 records):'):
+            marked_as_empty = True
 
-    # There should always be some--at least from building this file!
-    assert action_keys, f"Failed to get action keys from Bazel.\nPlease file an issue with some of the following log:\n"+action_cache_process.stdout
+    # Make sure we get notified of changes to the format, since bazel dump --action_cache isn't public API.
+    # We continue gracefully, rather than asserting, because we can (conservatively) continue without hitting cache.
+    if not marked_as_empty and not action_keys:
+        print("\033[0;33m>>> Failed to get action keys from Bazel.\nPlease file an issue with the following log:\n\033[0m"+action_cache_process.stdout,  file=sys.stderr)
 
     return action_keys
 
