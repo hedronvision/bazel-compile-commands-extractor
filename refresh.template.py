@@ -420,11 +420,12 @@ def _get_headers(compile_action, source_path: str):
                     action_key, headers = json.load(cache_file)
             except json.JSONDecodeError:
                 # Corrupted cache, which can happen if, for example, the user kills the program, since writes aren't atomic.
+                # But if it is the result of a bug, we want to print it before it's overwritten, so it can be reported
                 # For a real instance, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/60
                 with open(cache_file_path) as cache_file:
                     print(f"""\033[0;33m>>> Ignoring corrupted header cache {cache_file_path}
     This is okay if you manually killed this tool earlier.
-    But if this message is appearing spontaneously or frequently, please file an issue containing the contents of the corrupted cache, which we'll print below before the cache is overwritten.
+    But if this message is appearing spontaneously or frequently, please file an issue containing the contents of the corrupted cache, below.
     {cache_file.read()}
     Thanks for your help!
     Continuing gracefully...\033[0m""",  file=sys.stderr)
