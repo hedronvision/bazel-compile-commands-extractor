@@ -49,6 +49,13 @@ refresh_compile_commands(
         # exclude_headers = "external",
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
+    # To work correctly, the extractor depends on the existence of the bazel convenience symlinks and an `external/` symlink that will automatically be created if it does not exists. If you don't have/want the bazel convenience symlinks, the generated compile_commands.json will not work for you, as it assumes these symlinks exists.
+    # If you don't want the `external/` symlink use
+        # replace_external_path = True
+        # ^ Defaults to False. If set relative references to files in the external folder will be replace with a absolute path into the bazel output directory. The `external/` symlink will not be created.
+    # If you don't want the bazel convenience symlinks use
+        # replace_output_path = True
+        # ^ Defaults to False. If set relative references to files in the bazel-bin and bazel-out folders will be replace with a absolute path into the bazel output directory.
 ```
 """
 
@@ -63,6 +70,8 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        replace_output_path = False,
+        replace_external_path = False,
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     if not targets:  # Default to all targets in main workspace
@@ -74,7 +83,7 @@ def refresh_compile_commands(
 
     # Generate runnable python script from template
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, replace_output_path = replace_output_path, replace_external_path = replace_external_path, **kwargs)
     native.py_binary(name = name, srcs = [script_name], **kwargs)
 
 def _expand_template_impl(ctx):
@@ -90,6 +99,8 @@ def _expand_template_impl(ctx):
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
             "{exclude_headers}": '"' + str(ctx.attr.exclude_headers) + '"',
             "{exclude_external_sources}": str(ctx.attr.exclude_external_sources),
+            "{replace_output_path}":  str(ctx.attr.replace_output_path),
+            "{replace_external_path}": str(ctx.attr.replace_external_path),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -99,6 +110,8 @@ _expand_template = rule(
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external"]),
+        "replace_output_path": attr.bool(default = False),
+        "replace_external_path": attr.bool(default = False),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),  # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
     },
