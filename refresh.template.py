@@ -510,13 +510,13 @@ def _get_apple_SDKROOT(SDK_name: str):
     """Get path to xcode-select'd root for the given OS."""
     SDKROOT_maybe_versioned =  subprocess.check_output(
         ('xcrun', '--show-sdk-path', '-sdk', SDK_name.lower()),
-        stderr = subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         encoding=locale.getpreferredencoding()
     ).rstrip()
     # Unless xcode-select has been invoked (like for a beta) we'd expect, e.g.,  '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS<version>.sdk' or '/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk'
     version = subprocess.check_output(
         ('xcrun', '--show-sdk-version', '-sdk', SDK_name.lower()),
-        stderr = subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         encoding=locale.getpreferredencoding()
     ).rstrip()
     return SDKROOT_maybe_versioned.replace(version, '') # Strip version and use unversioned SDK symlink so the compile commands are still valid after an SDK update.
@@ -550,7 +550,7 @@ def _get_apple_active_clang():
     """Get path to xcode-select'd clang version."""
     return subprocess.check_output(
         ('xcrun', '--find', 'clang'),
-        stderr = subprocess.DEVNULL, # Suppress superfluous error messages like "Requested but did not find extension point with identifier..."
+        stderr=subprocess.DEVNULL, # Suppress superfluous error messages like "Requested but did not find extension point with identifier..."
         encoding=locale.getpreferredencoding()
     ).rstrip()
     # Unless xcode-select has been invoked (like for a beta) we'd expect, e.g., '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang' or whatever the equivalent is for command line tools.
