@@ -508,10 +508,19 @@ _get_files.has_logged_missing_file_error = False
 @functools.lru_cache(maxsize=None)
 def _get_apple_SDKROOT(SDK_name: str):
     """Get path to xcode-select'd root for the given OS."""
-    # We're manually building the path because something like `xcodebuild -sdk iphoneos` requires different capitalization and more parsing, and this is a hack anyway until Bazel fixes https://github.com/bazelbuild/bazel/issues/12852
-    return f'{_get_apple_DEVELOPER_DIR()}/Platforms/{SDK_name}.platform/Developer/SDKs/{SDK_name}.sdk'
-    # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk'
-    # Traditionally stored in SDKROOT environment variable, but not provided.
+    SDKROOT_maybe_versioned =  subprocess.check_output(
+        ('xcrun', '--show-sdk-path', '-sdk', SDK_name.lower()),
+        stderr = subprocess.DEVNULL,
+        encoding=locale.getpreferredencoding()
+    ).rstrip()
+    # Unless xcode-select has been invoked (like for a beta) we'd expect, e.g.,  '/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS<version>.sdk' or '/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk'
+    version = subprocess.check_output(
+        ('xcrun', '--show-sdk-version', '-sdk', SDK_name.lower()),
+        stderr = subprocess.DEVNULL,
+        encoding=locale.getpreferredencoding()
+    ).rstrip()
+    return SDKROOT_maybe_versioned.replace(version, '') # Strip version and use unversioned SDK symlink so the compile commands are still valid after an SDK update.
+    # Traditionally stored in SDKROOT environment variable, but not provided by Bazel. See https://github.com/bazelbuild/bazel/issues/12852
 
 
 def _get_apple_platform(compile_args: typing.List[str]):
@@ -532,15 +541,19 @@ def _get_apple_platform(compile_args: typing.List[str]):
 def _get_apple_DEVELOPER_DIR():
     """Get path to xcode-select'd developer directory."""
     return subprocess.check_output(('xcode-select', '--print-path'), encoding=locale.getpreferredencoding()).rstrip()
-    # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer' from xcode-select -p
-    # Traditionally stored in DEVELOPER_DIR environment variable, but not provided.
+    # Unless xcode-select has been invoked (like for a beta) we'd expect, e.g., '/Applications/Xcode.app/Contents/Developer' or '/Library/Developer/CommandLineTools'
+    # Traditionally stored in DEVELOPER_DIR environment variable, but not provided by Bazel. See https://github.com/bazelbuild/bazel/issues/12852
 
 
 @functools.lru_cache(maxsize=None)
 def _get_apple_active_clang():
     """Get path to xcode-select'd clang version."""
-    return subprocess.check_output(('xcrun', '--find', 'clang'), encoding=locale.getpreferredencoding()).rstrip()
-    # Unless xcode-select has been invoked (like for a beta) we'd expect '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang' from xcrun -f clang
+    return subprocess.check_output(
+        ('xcrun', '--find', 'clang'),
+        stderr = subprocess.DEVNULL, # Suppress superfluous error messages like "Requested but did not find extension point with identifier..."
+        encoding=locale.getpreferredencoding()
+    ).rstrip()
+    # Unless xcode-select has been invoked (like for a beta) we'd expect, e.g., '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang' or whatever the equivalent is for command line tools.
 
 
 def _apple_platform_patch(compile_args: typing.List[str]):
