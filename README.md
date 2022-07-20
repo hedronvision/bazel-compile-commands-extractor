@@ -156,7 +156,7 @@ Add the following three separate entries to `"clangd.arguments"`:
 ```Shell
 --header-insertion=never
 --compile-commands-dir=${workspaceFolder}/
---query-driver=/**/*
+--query-driver=**
 ```
 (Just copy each as written; VSCode will correctly expand ${workspaceFolder} for each workspace.)
   -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause clangd to interrogate Bazel's compiler wrappers to figure out which system headers are included by default.
