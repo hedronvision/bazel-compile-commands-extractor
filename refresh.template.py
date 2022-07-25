@@ -684,14 +684,14 @@ def _get_commands(target: str, flags: str):
 
     # Detect any positional args--build targets--in the flags, and issue a warning.
     if any(not f.startswith('-') for f in additional_flags) or '--' in additional_flags[:-1]:
-        print(f"""\033[0;33m>>> The flags you passed seem to contain targets.
+        print("""\033[0;33m>>> The flags you passed seem to contain targets.
     Try adding them as targets in your refresh_compile_commands rather than flags.
     [Specifying targets at runtime isn't supported yet, and in a moment, Bazel will likely fail to parse without our help. If you need to be able to specify targets at runtime, and can't easily just add them to your refresh_compile_commands, please open an issue or file a PR. You may also want to refer to https://github.com/hedronvision/bazel-compile-commands-extractor/issues/62.]\033[0m""",  file=sys.stderr)
 
     # Quick (imperfect) effort at detecting flags in the targets.
     # Can't detect flags starting with -, because they could be subtraction patterns.
     if any(target.startswith('--') for target in shlex.split(target)):
-        print(f"""\033[0;33m>>> The target you specified seems to contain flags.
+        print("""\033[0;33m>>> The target you specified seems to contain flags.
     Try adding them as flags in your refresh_compile_commands rather than targets.
     In a moment, Bazel will likely fail to parse.\033[0m""",  file=sys.stderr)
 
@@ -797,7 +797,7 @@ def _ensure_external_workspaces_link_exists():
             subprocess.run(f'mklink /J "{source}" "{dest}"', check=True, shell=True) # shell required for mklink builtin
         else:
             source.symlink_to(dest, target_is_directory=True)
-        print(f"""\033[0;32m>>> Automatically added //external workspace link:
+        print("""\033[0;32m>>> Automatically added //external workspace link:
     This link makes it easy for you--and for build tooling--to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox.
     It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.\033[0m""", file=sys.stderr)
 
@@ -838,7 +838,7 @@ def _ensure_gitignore_entries():
             gitignore.write(line)
             gitignore.write('\n')
     if to_add:
-        print(f"\033[0;32m>>> Automatically added entries to .gitignore to avoid problems.\033[0m", file=sys.stderr)
+        print("\033[0;32m>>> Automatically added entries to .gitignore to avoid problems.\033[0m", file=sys.stderr)
 
 
 if __name__ == '__main__':
