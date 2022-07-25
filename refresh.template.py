@@ -777,7 +777,7 @@ def _ensure_external_workspaces_link_exists():
         try:
             current_dest = os.readlink(source) # MIN_PY=3.9 source.readlink()
         except OSError:
-            print("\033[0;31m>>> //external already exists, but it isn't a symlink or Windows junction. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.\033[0m", file=sys.stderr) # Don't auto delete in case the user has something important there.
+            print(f"\033[0;31m>>> //external already exists, but it isn't a {'junction' if is_windows else 'symlink'}. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.\033[0m", file=sys.stderr) # Don't auto delete in case the user has something important there.
             exit(1)
 
         # Normalize the path for matching
