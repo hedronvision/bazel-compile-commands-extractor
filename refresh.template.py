@@ -763,6 +763,12 @@ def _ensure_external_workspaces_link_exists():
     is_windows = os.name == 'nt'
     source = pathlib.Path('external')
 
+    if not os.path.lexists('bazel-out'):
+        print("\033[0;31m>>> //bazel-out is missing. Please remove --symlink-prefix, so the workspace mirrors the compilation environment.\033[0m", file=sys.stderr)
+        # Crossref: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/14 https://github.com/hedronvision/bazel-compile-commands-extractor/pull/65
+        # Note: No longer experimental_no_product_name_out_symlink. See https://github.com/bazelbuild/bazel/commit/06bd3e8c0cd390f077303be682e9dec7baf17af2
+        exit(1)
+
     # Traverse into output_base via bazel-out, keeping the workspace position-independent, so it can be moved without rerunning
     dest = pathlib.Path('bazel-out/../../../external')
     if is_windows:
