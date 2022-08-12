@@ -463,7 +463,9 @@ _get_headers.has_logged = False
 
 def _get_files(compile_action):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
-    # Bazel puts the source file being compiled after the -c flag, so we look for the source file there.
+    # Bazel puts the source file being compiled either:
+        # after the -c flag or,
+        # before the -o flag, so we look for the source file in either of these locations.
     # This is a strong assumption about Bazel internals, so we're taking special care to check that this condition holds with asserts. That way things don't fail silently if it changes some day.
         # -c just means compile-only; don't link into a binary. You can definitely have a proper invocation to clang/gcc where the source isn't right after -c, or where -c isn't present at all.
         # However, parsing the command line this way is our best simple option. The other alternatives seem worse:
@@ -474,12 +476,21 @@ def _get_files(compile_action):
                 # Concretely, the message usually has the form "action 'Compiling foo.cpp'"" -> foo.cpp. But it also has "action 'Compiling src/tools/launcher/dummy.cc [for tool]'" -> external/bazel_tools/src/tools/launcher/dummy.cc
                 # If we did ever go this route, you can join the output from aquery --output=text and --output=jsonproto by actionKey.
             # For more context on options and how this came to be, see https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37
+
+    SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
+
     compile_only_flag = '/c' if '/c' in compile_action.arguments else '-c' # For Windows/msvc support
     assert compile_only_flag in compile_action.arguments, f"/c or -c, required for parsing sources, is not found in compile args: {compile_action.arguments}"
     source_index = compile_action.arguments.index(compile_only_flag) + 1
     source_file = compile_action.arguments[source_index]
-    SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
-    assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found after {compile_only_flag} in {compile_action.arguments}"
+
+    if not source_file.endswith(SOURCE_EXTENSIONS):
+        output_flag = '/o' if '/o' in compile_action.arguments else '-o' # For Windows/msvc support
+        assert output_flag in compile_action.arguments, f"/o or -o, required for parsing sources, is not found in compile args: {compile_action.arguments}"
+        source_index = compile_action.arguments.index(output_flag) - 1
+        source_file = compile_action.arguments[source_index]
+
+    assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found niether after {compile_only_flag} nor before {output_flag} in {compile_action.arguments}"
     assert source_index + 1 == len(compile_action.arguments) or compile_action.arguments[source_index + 1].startswith('-') or not compile_action.arguments[source_index + 1].endswith(SOURCE_EXTENSIONS), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_action.arguments}"
 
     # Warn gently about missing files
