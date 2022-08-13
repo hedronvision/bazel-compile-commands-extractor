@@ -490,7 +490,7 @@ def _get_files(compile_action):
         source_index = compile_action.arguments.index(output_flag) - 1
         source_file = compile_action.arguments[source_index]
 
-    assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found niether after {compile_only_flag} nor before {output_flag} in {compile_action.arguments}"
+    assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file not found neither after {compile_only_flag} nor before {output_flag} in {compile_action.arguments}"
     assert source_index + 1 == len(compile_action.arguments) or compile_action.arguments[source_index + 1].startswith('-') or not compile_action.arguments[source_index + 1].endswith(SOURCE_EXTENSIONS), f"Multiple sources detected after {compile_only_flag}. Might work, but needs testing, and unlikely to be right given Bazel's incremental compilation. CMD: {compile_action.arguments}"
 
     # Warn gently about missing files
