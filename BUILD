@@ -1,4 +1,4 @@
-load("refresh_compile_commands.bzl", "refresh_compile_commands")
+load(":refresh_compile_commands.bzl", "refresh_compile_commands")
 
 # See README.md for interface.
 

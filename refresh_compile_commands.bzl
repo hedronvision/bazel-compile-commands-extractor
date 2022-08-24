@@ -98,7 +98,7 @@ _expand_template = rule(
     attrs = {
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
-        "exclude_headers": attr.string(values = ["all", "external",""]),
+        "exclude_headers": attr.string(values = ["all", "external", ""]), # "" needed only for compatibility with Bazel < 3.6.0
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),  # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
     },
