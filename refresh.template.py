@@ -648,9 +648,22 @@ def _all_platform_patch(compile_args: typing.List[str]):
     # For more context see: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/21
     compile_args = (arg for arg in compile_args if not arg == '-fno-canonical-system-headers')
 
+    # Strip out --gcc-toolchain to work around https://github.com/clangd/clangd/issues/1248
+    skip_next = False
+    new_compile_args = []
+    for arg in compile_args:
+        if arg.startswith('-gcc-toolchain'):
+            if len(arg) == len('-gcc-toolchain'):
+                skip_next = True
+        elif skip_next:
+            skip_next = False
+        else:
+            new_compile_args.append(arg)
+    compile_args = new_compile_args
+
     # Any other general fixes would go here...
 
-    return list(compile_args)
+    return compile_args
 
 
 def _get_cpp_command_for_files(compile_action):
