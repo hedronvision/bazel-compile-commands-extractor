@@ -486,12 +486,10 @@ def _get_files(compile_action):
         source_index = compile_action.arguments.index('/c') + 1
 
     source_file = compile_action.arguments[source_index]
-    SOURCE_EXTENSIONS = ('.c', '.cc', '.cpp', '.cxx', '.c++', '.C', '.m', '.mm', '.cu', '.cl', '.s', '.asm', '.S')
-    assert source_file.endswith(SOURCE_EXTENSIONS), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
+    assert source_file.endswith(_get_files.source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
 
     # Warn gently about missing files
-    file_exists = os.path.isfile(source_file)
-    if not file_exists:
+    if not os.path.isfile(source_file):
         if not _get_files.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
             _get_files.has_logged_missing_file_error = True
             print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_file}
@@ -504,12 +502,58 @@ def _get_files(compile_action):
         You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
         [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
     Continuing gracefully...\033[0m""",  file=sys.stderr)
+        return {source_file}, set()
 
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and just return the single source file.
-    return {source_file}, _get_headers(compile_action, source_file) if file_exists else set()
+
+    # Assembly sources that are not preprocessed can't include headers
+    if os.path.splitext(source_file)[1] in _get_files.assembly_source_extensions:
+        return {source_file}, set()
+
+    header_files = _get_headers(compile_action, source_file)
+
+    # Ambiguous .h headers need a language specified if they aren't C, or clangd sometimes makes mistakes
+    # Open issues:
+    # https://github.com/clangd/clangd/issues/1173
+    # https://github.com/clangd/clangd/issues/1263
+    if (any(header_file.endswith('.h') for header_file in header_files)
+        and not source_file.endswith(_get_files.c_source_extensions)
+        and all(not arg.startswith('-x') and not arg.startswith('--language') and arg.lower() not in ('-objc', '-objc++', '/TC', '/TP') for arg in compile_action.arguments)):
+        if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
+            lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type?view=msvc-170
+        else:
+            lang_flag = _get_files.extensions_to_language_args[os.path.splitext(source_file)[1]]
+        # Insert at front of (non executable) args, because --language is only supposed to take effect on files listed thereafter
+        compile_action.arguments.insert(1, lang_flag)
+
+    return {source_file}, header_files
 _get_files.has_logged_missing_file_error = False
+# Setup extensions and flags for the whole C-language family.
+# Clang has a list: https://github.com/llvm/llvm-project/blob/b9f3b7f89a4cb4cf541b7116d9389c73690f78fa/clang/lib/Driver/Types.cpp#L293
+_get_files.c_source_extensions = ('.c', '.i')
+_get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C', '.CC', '.cp', '.CPP', '.C++', '.CXX', '.ii')
+_get_files.objc_source_extensions = ('.m',)
+_get_files.objcpp_source_extensions = ('.mm', '.M')
+_get_files.cuda_source_extensions = ('.cu', '.cui')
+_get_files.opencl_source_extensions = ('.cl',)
+_get_files.openclxx_source_extensions = ('.clcpp',)
+_get_files.assembly_source_extensions = ('.s', '.asm')
+_get_files.assembly_needing_c_preprocessor_source_extensions = ('.S',)
+_get_files.source_extensions = _get_files.c_source_extensions + _get_files.cpp_source_extensions + _get_files.objc_source_extensions + _get_files.objcpp_source_extensions + _get_files.cuda_source_extensions + _get_files.opencl_source_extensions + _get_files.openclxx_source_extensions + _get_files.assembly_source_extensions + _get_files.assembly_needing_c_preprocessor_source_extensions
+_get_files.extensions_to_language_args = { # Note that clangd fails on the --language or -ObjC or -ObjC++ forms. See https://github.com/clangd/clangd/issues/1173#issuecomment-1226847416
+    _get_files.c_source_extensions: '-xc',
+    _get_files.cpp_source_extensions: '-xc++',
+    _get_files.objc_source_extensions: '-xobjective-c',
+    _get_files.objcpp_source_extensions: '-xobjective-c++',
+    _get_files.cuda_source_extensions: '-xcuda',
+    _get_files.opencl_source_extensions: '-xcl',
+    _get_files.openclxx_source_extensions: '-xclcpp',
+    _get_files.assembly_source_extensions: '-xassembler',
+    _get_files.assembly_needing_c_preprocessor_source_extensions: '-xassembler-with-cpp',
+}
+_get_files.extensions_to_language_args = {ext : flag for exts, flag in _get_files.extensions_to_language_args.items() for ext in exts} # Flatten map for easier use
 
 
 @functools.lru_cache(maxsize=None)
