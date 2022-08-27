@@ -75,7 +75,15 @@ def refresh_compile_commands(
     # Generate runnable python script from template
     script_name = name + ".py"
     _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
-    native.py_binary(name = name, srcs = [script_name], **kwargs)
+
+    native.py_binary(
+        name = name,
+        srcs = [
+            script_name,
+            "@hedron_compile_commands//:command_reformatter.py",
+        ],
+        **kwargs
+    )
 
 def _expand_template_impl(ctx):
     """Inject targets of interest into refresh.template.py, and set it up to be run."""

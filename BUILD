@@ -13,4 +13,17 @@ refresh_compile_commands(
 # Implementation:
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
-exports_files(["refresh.template.py"]) # For implicit use by refresh_compile_commands.
+# For implicit use by refresh_compile_commands.
+exports_files([
+    "refresh.template.py",
+    "command_reformatter.py",
+])
+
+
+py_test(
+    name = "command_reformatter_test",
+    srcs = [
+        "command_reformatter.py",
+        "command_reformatter_test.py",
+    ],
+)
