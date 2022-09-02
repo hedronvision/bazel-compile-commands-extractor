@@ -508,7 +508,7 @@ def _get_files(compile_action):
 
     # Getting the source file is a little trickier than it might seem.
     # Bazel seems to consistently put the source file being compiled either:
-        # before the -o flag, for GCC-formatted commands, or
+        # before the -o flag, for -formatted commands, or
         # after the /c flag, for MSVC-formatted commands
         # [See https://github.com/hedronvision/bazel-compile-commands-extractor/pull/72 for -c counterexample for GCC]
     # This is a strong assumption about Bazel internals, so we're taking some care to check that this condition holds with asserts. That way things are less likely to fail silently if it changes some day.
@@ -690,7 +690,7 @@ def _all_platform_patch(compile_args: typing.List[str]):
     # For more context see: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/21
     compile_args = (arg for arg in compile_args if not arg == '-fno-canonical-system-headers')
 
-    # Strip out --gcc-toolchain to work around https://github.com/clangd/clangd/issues/1248
+    # Strip out -gcc-toolchain to work around https://github.com/clangd/clangd/issues/1248
     skip_next = False
     new_compile_args = []
     for arg in compile_args:
