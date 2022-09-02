@@ -875,7 +875,7 @@ def _ensure_external_workspaces_link_exists():
         log_error(">>> //bazel-out is missing. Please remove --symlink_prefix and --experimental_convenience_symlinks, so the workspace mirrors the compilation environment.")
         # Crossref: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/14 https://github.com/hedronvision/bazel-compile-commands-extractor/pull/65
         # Note: experimental_no_product_name_out_symlink is now enabled by default. See https://github.com/bazelbuild/bazel/commit/06bd3e8c0cd390f077303be682e9dec7baf17af2
-        exit(1)
+        sys.exit(1)
 
     # Traverse into output_base via bazel-out, keeping the workspace position-independent, so it can be moved without rerunning
     dest = pathlib.Path('bazel-out/../../../external')
@@ -892,7 +892,7 @@ def _ensure_external_workspaces_link_exists():
             current_dest = os.readlink(source) # MIN_PY=3.9 source.readlink()
         except OSError:
             log_error(f">>> //external already exists, but it isn't a {'junction' if is_windows else 'symlink'}. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.") # Don't auto delete in case the user has something important there.
-            exit(1)
+            sys.exit(1)
 
         # Normalize the path for matching
         # First, workaround a gross case where Windows readlink returns extended path, starting with \\?\, causing the match to fail
