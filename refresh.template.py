@@ -20,7 +20,7 @@ if sys.version_info < (3,7):
 
 import concurrent.futures
 import enum
-import functools
+import functools  # MIN_PY=3.9: Replace `functools.lru_cache(maxsize=None)` with `functools.cache`.
 import itertools
 import json
 import locale
