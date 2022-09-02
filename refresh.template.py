@@ -19,6 +19,7 @@ if sys.version_info < (3,7):
 
 
 import concurrent.futures
+import enum
 import functools
 import itertools
 import json
@@ -34,6 +35,46 @@ import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 
 
+@enum.unique
+class SGR(enum.Enum):
+    """Enumerate (some of the) available SGR (Select Graphic Rendition) control sequences."""
+    # For details on SGR control sequences (and ANSI escape codes in general), see: https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_(Select_Graphic_Rendition)_parameters
+    RESET = '\033[0m'
+    FG_RED = '\033[0;31m'
+    FG_GREEN = '\033[0;32m'
+    FG_YELLOW = '\033[0;33m'
+    FG_BLUE = '\033[0;34m'
+
+
+def _log_with_sgr(sgr, *values, sep=' ', end='\n', file=sys.stderr, flush=False):
+    """Log a message to stderr wrapped in an SGR context."""
+    # This function (and each related `log_*` function) takes the same keyword-only arguments as `print` with the same default values.
+    # See https://docs.python.org/3/library/functions.html#print for the interpretation of these keyword-only arguments.
+    print(sgr, end='', file=file, flush=False)
+    print(*values, sep=sep, end='', file=file, flush=False)
+    print(SGR.RESET, end=end, file=file, flush=flush)
+
+
+def log_error(*values, sep=' ', end='\n', file=sys.stderr, flush=False):
+    """Log an error message (in red) to stderr."""
+    _log_with_sgr(SGR.FG_RED, *values, sep=sep, end=end, file=file, flush=flush)
+
+
+def log_warning(*values, sep=' ', end='\n', file=sys.stderr, flush=False):
+    """Log a warning message (in yellow) to stderr."""
+    _log_with_sgr(SGR.FG_YELLOW, *values, sep=sep, end=end, file=file, flush=flush)
+
+
+def log_info(*values, sep=' ', end='\n', file=sys.stderr, flush=False):
+    """Log an informative message (in blue) to stderr."""
+    _log_with_sgr(SGR.FG_BLUE, *values, sep=sep, end=end, file=file, flush=flush)
+
+
+def log_success(*values, sep=' ', end='\n', file=sys.stderr, flush=False):
+    """Log a success message (in green) to stderr."""
+    _log_with_sgr(SGR.FG_GREEN, *values, sep=sep, end=end, file=file, flush=flush)
+
+
 def _print_header_finding_warning_once():
     """Gives users context about "compiler errors" while header finding. Namely that we're recovering."""
     # Shared between platforms
@@ -42,7 +83,7 @@ def _print_header_finding_warning_once():
     if _print_header_finding_warning_once.has_logged: return
     _print_header_finding_warning_once.has_logged = True
 
-    print("""\033[0;33m>>> While locating the headers you use, we encountered a compiler warning or error.
+    log_warning(""">>> While locating the headers you use, we encountered a compiler warning or error.
     No need to worry; your code doesn't have to compile for this tool to work.
     However, we'll still print the errors and warnings in case they're helpful for you in fixing them.
     If the errors are about missing files that Bazel should generate:
@@ -52,7 +93,7 @@ def _print_header_finding_warning_once():
         Please make sure you're supplying this tool with the same flags you use to build.
         You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
         [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
-    Continuing gracefully...\033[0m""",  file=sys.stderr)
+    Continuing gracefully...""")
 _print_header_finding_warning_once.has_logged = False
 
 
@@ -78,7 +119,8 @@ def _get_bazel_cached_action_keys():
     # Make sure we get notified of changes to the format, since bazel dump --action_cache isn't public API.
     # We continue gracefully, rather than asserting, because we can (conservatively) continue without hitting cache.
     if not marked_as_empty and not action_keys:
-        print("\033[0;33m>>> Failed to get action keys from Bazel.\nPlease file an issue with the following log:\n\033[0m"+action_cache_process.stdout,  file=sys.stderr)
+        log_warning(">>> Failed to get action keys from Bazel.\nPlease file an issue with the following log:")
+        print(action_cache_process.stdout, file=sys.stderr)
 
     return action_keys
 
@@ -410,10 +452,10 @@ def _get_headers(compile_action, source_path: str):
     # A more full (if more involved) solution would be to get the primaryOutput for the action from the aquery output, but this should handle the cases Bazel emits.
     if not output_file and not _get_headers.has_logged:
         _get_headers.has_logged = True
-        print(f"""\033[0;33m>>> Please file an issue containing the following: Output file not detected in arguments {compile_action.arguments}.
+        log_warning(f""">>> Please file an issue containing the following: Output file not detected in arguments {compile_action.arguments}.
     Not a big deal; things will work but will be a little slower.
     Thanks for your help!
-    Continuing gracefully...\033[0m""",  file=sys.stderr)
+    Continuing gracefully...""")
 
     # Check for a fresh cache of headers
     if output_file:
@@ -428,12 +470,12 @@ def _get_headers(compile_action, source_path: str):
                 # But if it is the result of a bug, we want to print it before it's overwritten, so it can be reported
                 # For a real instance, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/60
                 with open(cache_file_path) as cache_file:
-                    print(f"""\033[0;33m>>> Ignoring corrupted header cache {cache_file_path}
+                    log_warning(f""">>> Ignoring corrupted header cache {cache_file_path}
     This is okay if you manually killed this tool earlier.
     But if this message is appearing spontaneously or frequently, please file an issue containing the contents of the corrupted cache, below.
     {cache_file.read()}
     Thanks for your help!
-    Continuing gracefully...\033[0m""",  file=sys.stderr)
+    Continuing gracefully...""")
             else:
                 # Check cache freshness.
                     # Action key validates that it corresponds to the same action arguments
@@ -492,7 +534,7 @@ def _get_files(compile_action):
     if not os.path.isfile(source_file):
         if not _get_files.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
             _get_files.has_logged_missing_file_error = True
-            print(f"""\033[0;33m>>> A source file you compile doesn't (yet) exist: {source_file}
+            log_warning(f""">>> A source file you compile doesn't (yet) exist: {source_file}
     It's probably a generated file, and you haven't yet run a build to generate it.
     That's OK; your code doesn't even have to compile for this tool to work.
     If you can, though, you might want to run a build of your code.
@@ -501,7 +543,7 @@ def _get_files(compile_action):
         Please make sure you're supplying this tool with the same flags you use to build.
         You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
         [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
-    Continuing gracefully...\033[0m""",  file=sys.stderr)
+    Continuing gracefully...""")
         return {source_file}, set()
 
     # Note: We need to apply commands to headers and sources.
@@ -743,22 +785,22 @@ def _convert_compile_commands(aquery_output):
 def _get_commands(target: str, flags: str):
     """Yields compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
     # Log clear completion messages
-    print(f"\033[0;34m>>> Analyzing commands used in {target}\033[0m", file=sys.stderr)
+    log_info(f">>> Analyzing commands used in {target}")
 
     additional_flags = shlex.split(flags) + sys.argv[1:]
 
     # Detect any positional args--build targets--in the flags, and issue a warning.
     if any(not f.startswith('-') for f in additional_flags) or '--' in additional_flags[:-1]:
-        print("""\033[0;33m>>> The flags you passed seem to contain targets.
+        log_warning(""">>> The flags you passed seem to contain targets.
     Try adding them as targets in your refresh_compile_commands rather than flags.
-    [Specifying targets at runtime isn't supported yet, and in a moment, Bazel will likely fail to parse without our help. If you need to be able to specify targets at runtime, and can't easily just add them to your refresh_compile_commands, please open an issue or file a PR. You may also want to refer to https://github.com/hedronvision/bazel-compile-commands-extractor/issues/62.]\033[0m""",  file=sys.stderr)
+    [Specifying targets at runtime isn't supported yet, and in a moment, Bazel will likely fail to parse without our help. If you need to be able to specify targets at runtime, and can't easily just add them to your refresh_compile_commands, please open an issue or file a PR. You may also want to refer to https://github.com/hedronvision/bazel-compile-commands-extractor/issues/62.]""")
 
     # Quick (imperfect) effort at detecting flags in the targets.
     # Can't detect flags starting with -, because they could be subtraction patterns.
     if any(target.startswith('--') for target in shlex.split(target)):
-        print("""\033[0;33m>>> The target you specified seems to contain flags.
+        log_warning(""">>> The target you specified seems to contain flags.
     Try adding them as flags in your refresh_compile_commands rather than targets.
-    In a moment, Bazel will likely fail to parse.\033[0m""",  file=sys.stderr)
+    In a moment, Bazel will likely fail to parse.""")
 
     # First, query Bazel's C-family compile actions for that configured target
     aquery_args = [
@@ -814,14 +856,14 @@ def _get_commands(target: str, flags: str):
             parsed_aquery_output.actions = []
     except json.JSONDecodeError:
         print("Bazel aquery failed. Command:", aquery_args, file=sys.stderr)
-        print(f"\033[0;33m>>> Failed extracting commands for {target}\n    Continuing gracefully...\033[0m",  file=sys.stderr)
+        log_warning(f">>> Failed extracting commands for {target}\n    Continuing gracefully...")
         return
 
     yield from _convert_compile_commands(parsed_aquery_output)
 
 
     # Log clear completion messages
-    print(f"\033[0;32m>>> Finished extracting commands for {target}\033[0m", file=sys.stderr)
+    log_success(f">>> Finished extracting commands for {target}")
 
 
 def _ensure_external_workspaces_link_exists():
@@ -830,7 +872,7 @@ def _ensure_external_workspaces_link_exists():
     source = pathlib.Path('external')
 
     if not os.path.lexists('bazel-out'):
-        print("\033[0;31m>>> //bazel-out is missing. Please remove --symlink_prefix and --experimental_convenience_symlinks, so the workspace mirrors the compilation environment.\033[0m", file=sys.stderr)
+        log_error(">>> //bazel-out is missing. Please remove --symlink_prefix and --experimental_convenience_symlinks, so the workspace mirrors the compilation environment.")
         # Crossref: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/14 https://github.com/hedronvision/bazel-compile-commands-extractor/pull/65
         # Note: experimental_no_product_name_out_symlink is now enabled by default. See https://github.com/bazelbuild/bazel/commit/06bd3e8c0cd390f077303be682e9dec7baf17af2
         exit(1)
@@ -849,7 +891,7 @@ def _ensure_external_workspaces_link_exists():
         try:
             current_dest = os.readlink(source) # MIN_PY=3.9 source.readlink()
         except OSError:
-            print(f"\033[0;31m>>> //external already exists, but it isn't a {'junction' if is_windows else 'symlink'}. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.\033[0m", file=sys.stderr) # Don't auto delete in case the user has something important there.
+            log_error(f">>> //external already exists, but it isn't a {'junction' if is_windows else 'symlink'}. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.") # Don't auto delete in case the user has something important there.
             exit(1)
 
         # Normalize the path for matching
@@ -859,7 +901,7 @@ def _ensure_external_workspaces_link_exists():
         current_dest = pathlib.Path(current_dest)
 
         if dest != current_dest:
-            print("\033[0;33m>>> //external links to the wrong place. Automatically deleting and relinking...\033[0m", file=sys.stderr)
+            log_warning(">>> //external links to the wrong place. Automatically deleting and relinking...")
             source.unlink()
 
     # Create link if it doesn't already exist
@@ -869,9 +911,9 @@ def _ensure_external_workspaces_link_exists():
             subprocess.run(f'mklink /J "{source}" "{dest}"', check=True, shell=True) # shell required for mklink builtin
         else:
             source.symlink_to(dest, target_is_directory=True)
-        print("""\033[0;32m>>> Automatically added //external workspace link:
+        log_success(""">>> Automatically added //external workspace link:
     This link makes it easy for you--and for build tooling--to see the external dependencies you bring in. It also makes your source tree have the same directory structure as the build sandbox.
-    It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.\033[0m""", file=sys.stderr)
+    It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.""")
 
 
 def _ensure_gitignore_entries():
@@ -910,7 +952,7 @@ def _ensure_gitignore_entries():
             gitignore.write(line)
             gitignore.write('\n')
     if to_add:
-        print("\033[0;32m>>> Automatically added entries to .gitignore to avoid problems.\033[0m", file=sys.stderr)
+        log_success(">>> Automatically added entries to .gitignore to avoid problems.")
 
 
 if __name__ == '__main__':
