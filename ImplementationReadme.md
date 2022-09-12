@@ -1,5 +1,7 @@
 # Hedron's Compile Commands Extractor for Bazel — Implementation
 
+> Reading Time: 15m
+
 Hello, and thanks for your interest in the codebase :)
 
 **Goal:** *If you need to work under the hood, let's get you oriented efficiently.*
