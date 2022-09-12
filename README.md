@@ -6,13 +6,13 @@
 
 First, provide Bazel users cross-platform autocomplete for the C language family (C++, C, Objective-C, and Objective-C++), and thereby make development more efficient and fun!
 
-More generally, export Bazel build actions into the compile_commands.json format that enables great tooling decoupled from Bazel.
+More generally, export Bazel build actions into the `compile_commands.json` format that enables great tooling decoupled from Bazel.
 
 ## Usage Visuals
 
 ![Usage Animation](https://user-images.githubusercontent.com/7157583/142501309-862e89e2-02b4-4b61-950c-8b7e1bfd7eb7.gif)
 
-▲ Extracts compile_commands.json, enabling [clangd autocomplete](https://github.com/clangd/vscode-clangd) in your editor ▼
+▲ Extracts `compile_commands.json`, enabling [`clangd` autocomplete](https://github.com/clangd/vscode-clangd) in your editor ▼
 
 ![clangd help example](https://user-images.githubusercontent.com/7157583/142502357-af9ba056-f9e0-47ce-b69d-57e85dcca458.png)
 
@@ -44,7 +44,7 @@ There's a bunch of text here but only because we're trying to spell things out a
 
 ### First, do the usual WORKSPACE setup.
 
-Copy this into your Bazel WORKSPACE file to add this repo as an external dependency, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
+Copy this into your Bazel `WORKSPACE` file to add this repo as an external dependency, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
 
 ```Starlark
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -75,11 +75,11 @@ If not now, maybe come back to this step later, or watch this repo for updates. 
 
 ### Get the extractor running.
 
-We'll generate a compile_commands.json file in the root of the Bazel workspace.
+We'll generate a `compile_commands.json` file in the root of the Bazel workspace.
 
-That file describes how Bazel is compiling all the (Objective-)C(++) files. With the compile commands in a common format, build-system-independent tooling (e.g. clangd autocomplete, clang-tidy linting etc.), can get to work.
+That file describes how Bazel is compiling all the (Objective-)C(++) files. With the compile commands in a common format, build-system-independent tooling (e.g. `clangd` autocomplete, `clang-tidy` linting etc.), can get to work.
 
-We'll get it running and then move onto the next section while it whirrs away. But in the future, every time you want tooling (like autocomplete) to see new BUILD-file changes, rerun the command you chose below! Clangd will automatically pick up the changes.
+We'll get it running and then move onto the next section while it whirrs away. But in the future, every time you want tooling (like autocomplete) to see new `BUILD`-file changes, rerun the command you chose below! Clangd will automatically pick up the changes.
 
 #### There are four common paths:
 
@@ -103,7 +103,7 @@ Note: the extra `--` is not a typo, and functions to pass the flags to this tool
 
 In that case, you can easily specify the top-level output targets you're working on and the flags needed to build them.
 
-Open a BUILD file—we'd recommend using (or creating) `//BUILD`—and add something like:
+Open a `BUILD` file—we'd recommend using (or creating) `//BUILD`—and add something like:
 
 ```Starlark
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
@@ -125,24 +125,24 @@ refresh_compile_commands(
 )
 ```
 
-(For more details on `refresh_compile_commands`, look at the docs at the top of [refresh_compile_commands.bzl](./refresh_compile_commands.bzl)).
+(For more details on `refresh_compile_commands`, look at the docs at the top of [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl)).
 
 Finally, you'll need to `bazel run :refresh_compile_commands`
 
-##### 4. Using ccls or another tool that, unlike clangd, doesn't want or need headers in compile_commands.json?
+##### 4. Using `ccls` or another tool that, unlike `clangd`, doesn't want or need headers in `compile_commands.json`?
 
 Similar to the above, we'll use `refresh_compile_commands` for configuration, but instead of setting `targets`, set `exclude_headers = "all"`.
 
-### If you've got a very large project and compile_commands.json is taking a while to generate:
+### If you've got a very large project and `compile_commands.json` is taking a while to generate:
 
 Adding `exclude_external_sources = True` and `exclude_headers = "external"` can help, with some tradeoffs.
 
-For now, we'd suggest continuing on to set up clangd (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of clangd and/or this tool to index quickly, take a look at the docs at the top of [refresh_compile_commands.bzl](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
+For now, we'd suggest continuing on to set up `clangd` (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of `clangd` and/or this tool to index quickly, take a look at the docs at the top of [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
 
-## Editor Setup — for autocomplete based on compile_commands.json
+## Editor Setup — for autocomplete based on `compile_commands.json`
 
 ### VSCode
-Let's get clangd's extension installed and configured.
+Let's get `clangd`'s extension installed and configured.
 
 ```Shell
 code --install-extension llvm-vs-code-extensions.vscode-clangd
@@ -160,18 +160,18 @@ Add the following three separate entries to `"clangd.arguments"`:
 --compile-commands-dir=${workspaceFolder}/
 --query-driver=**
 ```
-(Just copy each as written; VSCode will correctly expand ${workspaceFolder} for each workspace.)
-  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause clangd to interrogate Bazel's compiler wrappers to figure out which system headers are included by default.
-  -  If your Bazel WORKSPACE is a subdirectory of your project, change --compile-commands-dir to point into that subdirectory by overriding *both* flags in your *workspace* settings
+(Just copy each as written; VSCode will correctly expand `${workspaceFolder}` for each workspace.)
+  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause `clangd` to interrogate Bazel's compiler wrappers to figure out which system headers are included by default.
+  -  If your Bazel `WORKSPACE` is a subdirectory of your project, change `--compile-commands-dir` to point into that subdirectory by overriding *both* flags in your *workspace* settings
 
 <!-- At least until https://github.com/clangd/vscode-clangd/issues/138 is resolved. -->
 Turn on: Clangd: Check Updates
   -  You always want the latest! New great features and fixes are always getting added to clangd.
-  -  We'll assume you always have the latest and aren't using an old version nor Apple's clangd intended for Xcode. While we can and do make great efforts to workaround issues in the current version of clangd, we remove those workarounds when clangd fixes them upstream. This keeps the code simple and development velocity fast!
+  -  We'll assume you always have the latest and aren't using an old version nor Apple's `clangd` intended for Xcode. While we can and do make great efforts to workaround issues in the current version of `clangd`, we remove those workarounds when `clangd` fixes them upstream. This keeps the code simple and development velocity fast!
 
-If turning on automatic updates doesn't prompt you to download the actual clangd server binary, hit (CMD/CTRL+SHIFT+P)->Download language Server.
+If turning on automatic updates doesn't prompt you to download the actual `clangd` server binary, hit (CMD/CTRL+SHIFT+P)->Download language Server.
 
-You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the plugin to load. The clangd download should prompt you to do so when it completes.
+You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the plugin to load. The `clangd` download should prompt you to do so when it completes.
 
 #### If you work on your repository with others...
 
@@ -181,22 +181,22 @@ You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the 
 
 If you're using another editor, you'll need to follow the same rough steps as above: [get the latest version of clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the same flags as VSCode. We know people have had an easy time setting up this tool with other editors, like Emacs, for example.
 
-Once you've succeeded in setting up another editor—or set up clang-tidy, or otherwise seen anything that might improve this readme—we'd love it if you'd give back and contribute what you know! Just edit this readme on GitHub and file a PR :)
+Once you've succeeded in setting up another editor—or set up `clang-tidy`, or otherwise seen anything that might improve this readme—we'd love it if you'd give back and contribute what you know! Just edit this `README.md` on GitHub and file a PR :)
 
 ## "Smooth Edges" — what we've enjoyed using this for.
 
 You should now be all set to go! Way to make it through setup.
 
-There should be a compile_commands.json file in the root of your workspace, enabling your editor to provide great, clang-based autocomplete. And you should know what target to `bazel run` to refresh that autocomplete, when you make BUILD-file changes big enough to require a refresh.
+There should be a `compile_commands.json` file in the root of your workspace, enabling your editor to provide great, clang-based autocomplete. And you should know what target to `bazel run` to refresh that autocomplete, when you make `BUILD`-file changes big enough to require a refresh.
 
-Behind the scenes, that compile_commands.json file contains entries describing all the commands used to build every source file in your project. And, for now, there's also one entry per header, describing one way it is compiled. (This gets you great autocomplete in header files, too, so you don't have to think about [clangd's biggest rough edge](https://github.com/clangd/clangd/issues/123)). Crucially, all these commands have been sufficiently de-Bazeled for clang tooling (or you!) to understand them.
+Behind the scenes, that `compile_commands.json` file contains entries describing all the commands used to build every source file in your project. And, for now, there's also one entry per header, describing one way it is compiled. (This gets you great autocomplete in header files, too, so you don't have to think about [`clangd`'s biggest rough edge](https://github.com/clangd/clangd/issues/123)). Crucially, all these commands have been sufficiently de-Bazeled for clang tooling (or you!) to understand them.
 
 
 ### Here's what you should be expecting, based on our experience:
 
 We use this tool every day to develop a cross-platform library for iOS and Android on macOS. Expect Android completion in Android source, macOS in macOS, iOS in iOS, etc. People use it on Linux/Ubuntu and Windows, too.
 
-All the usual clangd features should work. CMD/CTRL+click navigation (or option if you've changed keybindings), smart rename, autocomplete, highlighting etc. Everything you expect in an IDE should be there (because most good IDEs are backed by clangd). As a general principle: If you're choosing tooling that needs to understand a programming language, you want it to be based on a compiler frontend for that language, which clangd does as part of the LLVM/clang project.
+All the usual clangd features should work. CMD/CTRL+click navigation (or option if you've changed keybindings), smart rename, autocomplete, highlighting etc. Everything you expect in an IDE should be there (because most good IDEs are backed by `clangd`). As a general principle: If you're choosing tooling that needs to understand a programming language, you want it to be based on a compiler frontend for that language, which clangd does as part of the LLVM/clang project.
 
 Everything should also work for generated files, though you may have to run a build for the generated file to exist.
 
