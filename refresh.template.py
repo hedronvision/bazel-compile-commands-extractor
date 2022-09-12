@@ -792,11 +792,12 @@ def _get_commands(target: str, flags: str):
 
 
     # Filter aquery error messages to just those the user should care about.
+    missing_targets_warning: typing.Pattern[str] = re.compile(r"(\(\d+:\d+:\d+\) )?WARNING: Targets were missing from graph:")
     for line in aquery_process.stderr.splitlines():
         # Shush known warnings about missing graph targets.
         # The missing graph targets are not things we want to introspect anyway.
         # Tracking issue https://github.com/bazelbuild/bazel/issues/13007.
-        if line.startswith('WARNING: Targets were missing from graph:'):
+        if missing_targets_warning.match(line):
             continue
 
         print(line, file=sys.stderr)
