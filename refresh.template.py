@@ -729,6 +729,7 @@ def _convert_compile_commands(aquery_output):
         header_files_already_written |= header_files_not_already_written
 
         for file in itertools.chain(source_files, header_files_not_already_written):
+            if file == 'external/bazel_tools/src/tools/launcher/dummy.cc': continue # Suppress Bazel internal files leaking through. Hopefully will prevent issues like https://github.com/hedronvision/bazel-compile-commands-extractor/issues/77
             yield {
                 # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
                 'file': file,
