@@ -793,7 +793,7 @@ def _get_commands(target: str, flags: str):
 
 
     # Filter aquery error messages to just those the user should care about.
-    missing_targets_warning: typing.Pattern[str] = re.compile(r'(\(\d+:\d+:\d+\) )?WARNING: Targets were missing from graph:') # Regex handles --show_timestamps. Could use "in" if we ever need more flexibility.
+    missing_targets_warning: typing.Pattern[str] = re.compile(r'(\(\d+:\d+:\d+\) )?(\033\[[\d;]+m)?WARNING: (\033\[[\d;]+m)?Targets were missing from graph:') # Regex handles --show_timestamps and --color=yes. Could use "in" if we ever need more flexibility.
     for line in aquery_process.stderr.splitlines():
         # Shush known warnings about missing graph targets.
         # The missing graph targets are not things we want to introspect anyway.
