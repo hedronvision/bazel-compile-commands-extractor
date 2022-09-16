@@ -48,7 +48,7 @@ class SGR(enum.Enum):
 
 def _log_with_sgr(sgr, *values, sep=' ', end='\n', file=sys.stderr, flush=False):
     """Log a message to stderr wrapped in an SGR context."""
-    # This function (and each related `log_*` function) takes the same keyword-only arguments as `print` with the same default values.
+    # This function (and each related `log_*` function) takes the same keyword-only arguments as `print` with the same default values (except it prints to stderr instead of stdout).
     # See https://docs.python.org/3/library/functions.html#print for the interpretation of these keyword-only arguments.
     print(sgr, end='', file=file, flush=False)
     print(*values, sep=sep, end='', file=file, flush=False)
