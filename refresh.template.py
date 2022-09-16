@@ -962,10 +962,21 @@ def _ensure_gitignore_entries():
         log_success(">>> Automatically added entries to .gitignore to avoid problems.")
 
 
-if __name__ == '__main__':
-    workspace_root = pathlib.Path(os.environ['BUILD_WORKSPACE_DIRECTORY']) # Set by `bazel run`
-    os.chdir(workspace_root) # Ensure the working directory is the workspace root. Assumed by future commands.
+def _ensure_cwd_is_workspace_root():
+    """Set the current working directory to the root of the workspace."""
+    # The `bazel run` command sets `BUILD_WORKSPACE_DIRECTORY` to "the root of the workspace where the build was run." See: https://bazel.build/docs/user-manual#running-executables.
+    try:
+        workspace_root = pathlib.Path(os.environ['BUILD_WORKSPACE_DIRECTORY'])
+    except KeyError:
+        log_error(""">>> BUILD_WORKSPACE_DIRECTORY was not found in the environment. Make sure to invoke this tool with `bazel run`.""")
+        sys.exit(1)
+    # Change the working directory to the workspace root (assumed by future commands).
+    # Although this can fail (OSError/FileNotFoundError/PermissionError/NotADirectoryError), there's no easy way to recover, so we'll happily crash.
+    os.chdir(workspace_root)
 
+
+if __name__ == '__main__':
+    _ensure_cwd_is_workspace_root()
     _ensure_gitignore_entries()
     _ensure_external_workspaces_link_exists()
 
