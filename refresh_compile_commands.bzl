@@ -65,6 +65,7 @@ def refresh_compile_commands(
         exclude_external_sources = False,
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
+    # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
     if not targets:  # Default to all targets in main workspace
         targets = {"@//...": ""}
     elif type(targets) == "list":  # Allow specifying a list of targets w/o arguments
