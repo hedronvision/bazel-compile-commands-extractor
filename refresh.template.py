@@ -569,7 +569,7 @@ def _get_files(compile_action):
     # https://github.com/clangd/clangd/issues/1263
     if (any(header_file.endswith('.h') for header_file in header_files)
         and not source_file.endswith(_get_files.c_source_extensions)
-        and all(not arg.startswith('-x') and not arg.startswith('--language') and arg.lower() not in ('-objc', '-objc++', '/TC', '/TP') for arg in compile_action.arguments)):
+        and not any(arg.startswith('-x') or arg.startswith('--language') or arg.lower() in ('-objc', '-objc++', '/TC', '/TP') for arg in compile_action.arguments)):
         if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
             lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type?view=msvc-170
         else:
@@ -797,7 +797,7 @@ def _get_commands(target: str, flags: str):
     additional_flags = shlex.split(flags) + sys.argv[1:]
 
     # Detect any positional args--build targets--in the flags, and issue a warning.
-    if any(not f.startswith('-') for f in additional_flags) or '--' in additional_flags[:-1]:
+    if not all(f.startswith('-') for f in additional_flags) or '--' in additional_flags[:-1]:
         log_warning(""">>> The flags you passed seem to contain targets.
     Try adding them as targets in your refresh_compile_commands rather than flags.
     [Specifying targets at runtime isn't supported yet, and in a moment, Bazel will likely fail to parse without our help. If you need to be able to specify targets at runtime, and can't easily just add them to your refresh_compile_commands, please open an issue or file a PR. You may also want to refer to https://github.com/hedronvision/bazel-compile-commands-extractor/issues/62.]""")
