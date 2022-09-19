@@ -9,7 +9,7 @@ Together, let's make what was originally a handy, Hedron-internal tool more usef
 - We'd also like to stay safe from opening ourselves up to liability or lawsuits for trying to provide free help by releasing this software...
 - We're looking forward to learning and growing along the way.
 
-[For clarity: This is intended to be a source-available & contribution-encouraging license of a Hedron tool; we're trying to broaden usage and improvements, but not make it FSF-style free software or similar. We're trying to help--but also retain some rights. If that doesn't work for your needs, though, let's talk! There are open, friendly, learning humans behind this. :)]
+[For clarity: This is intended to be a source-available & contribution-encouraging license of a Hedron tool; we're trying to broaden usage and improvements, but not make it FSF-style free software or similar. We're trying to help--but also retain some rights. If that doesn't work for your needs, though, let's talk! There are open, friendly, learning humans behind this :) ]
 
 The actual license follows (and controls). By downloading or using this software or any related content (the "Software"), you agree to be bound by the terms of this agreement. If you do not or cannot agree to the terms of this agreement, please do not download, use, or contribute to the Software.
 
