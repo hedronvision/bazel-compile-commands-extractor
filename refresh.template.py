@@ -513,7 +513,7 @@ def _get_files(compile_action):
 
     # Getting the source file is a little trickier than it might seem.
     # Bazel seems to consistently put the source file being compiled either:
-        # before the -o flag, for -formatted commands, or
+        # before the -o flag, for GCC-formatted commands, or
         # after the /c flag, for MSVC-formatted commands
         # [See https://github.com/hedronvision/bazel-compile-commands-extractor/pull/72 for -c counterexample for GCC]
     # This is a strong assumption about Bazel internals, so we're taking some care to check that this condition holds with asserts. That way things are less likely to fail silently if it changes some day.
