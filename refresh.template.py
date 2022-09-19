@@ -404,13 +404,13 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
 
 
 def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
-    """Helper to determine if one path is relative to another"""
+    """Determine if one path is relative to another."""
+    # MIN_PY=3.9: Eliminate helper in favor of `PurePath.is_relative_to()`.
     try:
-        # MIN_PY=3.9: Eliminate helper in favor of PurePath.is_relative_to()
         sub.relative_to(parent)
-        return True
     except ValueError:
         return False
+    return True
 
 
 def _file_is_in_main_workspace_and_not_external(file_str: str):
