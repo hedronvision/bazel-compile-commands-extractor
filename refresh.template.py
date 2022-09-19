@@ -923,43 +923,46 @@ def _ensure_external_workspaces_link_exists():
     It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.""")
 
 
-def _ensure_gitignore_entries():
-    """Postcondition: compile_commands.json and the external symlink are .gitignore'd, if it looks like they're using git."""
-    # Silently check that we're in a git repo--and no-op if not.
-    if (not os.path.isfile('.gitignore') # Still add to the .gitignore if it exists, even if git isn't installed.
-        and subprocess.run('git rev-parse --git-dir', # see https://stackoverflow.com/questions/2180270/check-if-current-directory-is-a-git-repository
-        shell=True, # Unifies error case where git isn't even installed by making it also a non-zero exit code w/ no exception
+def _ensure_gitignore_entries_exist():
+    """Ensure `/compile_commands.json`, `/external`, and other useful entries are `.gitignore`'d if it looks like git is used."""
+    # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case the bazel workspace lives underneath the top-level git repository.
+    # See https://stackoverflow.com/questions/2180270/check-if-current-directory-is-a-git-repository for a few ways to test.
+    is_git_repository = subprocess.run('git rev-parse --git-dir',
+        shell=True,  # Ensure this will still fail with a nonzero error code even if `git` isn't installed, unifying error cases.
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        ).returncode): # non-zero indicates not in git repository
-        # Note that we're also handling the case where the bazel workspace is nested inside the git repository; it's not enough to just check for the presence of a .git directory
+    ).returncode == 0  # A nonzero error code indicates that we are not (nested) within a git repository.
+
+    # Do nothing if we aren't within a git repository and there is no `.gitignore` file. We still add to the .gitignore file if it exists, even if we aren't in a git repository (perhaps because git was temporarily uninstalled).
+    if not is_git_repository and not os.path.isfile('.gitignore'):
         return
 
-    needed_entries = [ # Pattern followed by an explainer comment that we'll add to the gitignore
+    # Each (pattern, explanation) will be added to the `.gitignore` file if the pattern isn't present.
+    needed_entries = [
         ('/external', "# The external link: Differs on Windows vs macOS/Linux, so we can't check it in. The pattern needs to not have a trailing / because it's a symlink on macOS/Linux."),
         ('/bazel-*', "# Bazel output symlinks: Same reasoning as /external. You need the * because people can change the name of the directory your repository is cloned into, changing the bazel-<workspace_name> symlink."),
         ('/compile_commands.json', "# Compiled output -> don't check in"),
         ('/.cache/', "# Directory where clangd puts its indexing work"),
     ]
 
-    # Separate operations because Python doesn't have a built in mode for read/write, don't truncate, create, allow seek to beginning of file.
-    open('.gitignore', 'a').close() # Ensure .gitignore exists
-    with open('.gitignore') as gitignore:
+    # Create `.gitignore` if it doesn't exist (and don't truncate if it does) and open it for appending/updating.
+    with open('.gitignore', 'a+') as gitignore:
+        gitignore.seek(0)  # Files opened in `a` mode seek to the end, so we reset to the beginning so we can read.
+        # Recall that trailing spaces, when escaped with `\`, are meaningful to git. However, none of the entries for which we're searching end with literal spaces, so we can safely trim all trailing whitespace. That said, we can't rewrite these stripped lines to the file, in case an existing entry is e.g. `/foo\ `, matching the file "foo " (with a trailing space), whereas the entry `/foo\` does not match the file `"foo "`.
         lines = [l.rstrip() for l in gitignore]
-    to_add = [entry for entry in needed_entries if entry[0] not in lines]
-    if to_add: # Add a nice header
-        # Ensure spacer before header
+        # Comments must be on their own line, so we can safely check for equality here.
+        missing = [entry for entry in needed_entries if entry[0] not in lines]
+        if not missing:
+            return
+        # Add a spacer before the header if the last line is nonempty.
         if lines and lines[-1]:
-            lines.append("")
-        lines.append("### Added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor")
-        for entry in to_add:
-            lines.extend(entry[::-1]) # Explanatory comment, then pattern
-    with open('.gitignore', 'w') as gitignore:
-        # Rewriting all the lines solves the case of a missing trailing \n
-        for line in lines:
-            gitignore.write(line)
-            gitignore.write('\n')
-    if to_add:
-        log_success(">>> Automatically added entries to .gitignore to avoid problems.")
+            print(file=gitignore)
+        # Add a nice header.
+        print("### Added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor", file=gitignore)
+        # Append the missing entries.
+        for pattern, comment in missing:
+            print(comment, file=gitignore)
+            print(pattern, file=gitignore)
+    log_success(">>> Automatically added entries to .gitignore to avoid problems.")
 
 
 def _ensure_cwd_is_workspace_root():
@@ -977,7 +980,7 @@ def _ensure_cwd_is_workspace_root():
 
 if __name__ == '__main__':
     _ensure_cwd_is_workspace_root()
-    _ensure_gitignore_entries()
+    _ensure_gitignore_entries_exist()
     _ensure_external_workspaces_link_exists()
 
     target_flag_pairs = [
