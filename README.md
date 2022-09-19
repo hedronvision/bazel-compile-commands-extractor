@@ -1,7 +1,5 @@
 # Hedron's Compile Commands Extractor for Bazel — User Interface
 
-> Reading Time: 10m
-
 **What is this project trying to do for me?**
 
 First, provide Bazel users cross-platform autocomplete for the C language family (C++, C, Objective-C, and Objective-C++), and thereby make development more efficient and fun!
@@ -37,6 +35,8 @@ We're including a couple of things they've said. We hope they'll give you enough
 — author of the previous best tool of this type
 
 ## Usage
+
+> Basic Setup Time: 10m
 
 Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for the C language family.
 
