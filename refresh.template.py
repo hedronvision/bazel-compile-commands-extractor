@@ -46,33 +46,29 @@ class SGR(enum.Enum):
     FG_BLUE = '\033[0;34m'
 
 
-def _log_with_sgr(sgr, *values, sep=' ', end='\n', file=sys.stderr, flush=False):
+def _log_with_sgr(sgr, colored_message, uncolored_message=''):
     """Log a message to stderr wrapped in an SGR context."""
-    # This function (and each related `log_*` function) takes the same keyword-only arguments as `print` with the same default values (except it prints to stderr instead of stdout).
-    # See https://docs.python.org/3/library/functions.html#print for the interpretation of these keyword-only arguments.
-    print(sgr, end='', file=file, flush=False)
-    print(*values, sep=sep, end='', file=file, flush=False)
-    print(SGR.RESET, end=end, file=file, flush=flush)
+    print(sgr.value, colored_message, SGR.RESET.value, uncolored_message, sep='', file=sys.stderr, flush=True)
 
 
-def log_error(*values, sep=' ', end='\n', file=sys.stderr, flush=False):
+def log_error(colored_message, uncolored_message=''):
     """Log an error message (in red) to stderr."""
-    _log_with_sgr(SGR.FG_RED, *values, sep=sep, end=end, file=file, flush=flush)
+    _log_with_sgr(SGR.FG_RED, colored_message, uncolored_message)
 
 
-def log_warning(*values, sep=' ', end='\n', file=sys.stderr, flush=False):
+def log_warning(colored_message, uncolored_message=''):
     """Log a warning message (in yellow) to stderr."""
-    _log_with_sgr(SGR.FG_YELLOW, *values, sep=sep, end=end, file=file, flush=flush)
+    _log_with_sgr(SGR.FG_YELLOW, colored_message, uncolored_message)
 
 
-def log_info(*values, sep=' ', end='\n', file=sys.stderr, flush=False):
+def log_info(colored_message, uncolored_message=''):
     """Log an informative message (in blue) to stderr."""
-    _log_with_sgr(SGR.FG_BLUE, *values, sep=sep, end=end, file=file, flush=flush)
+    _log_with_sgr(SGR.FG_BLUE, colored_message, uncolored_message)
 
 
-def log_success(*values, sep=' ', end='\n', file=sys.stderr, flush=False):
+def log_success(colored_message, uncolored_message=''):
     """Log a success message (in green) to stderr."""
-    _log_with_sgr(SGR.FG_GREEN, *values, sep=sep, end=end, file=file, flush=flush)
+    _log_with_sgr(SGR.FG_GREEN, colored_message, uncolored_message)
 
 
 def _print_header_finding_warning_once():
@@ -119,8 +115,7 @@ def _get_bazel_cached_action_keys():
     # Make sure we get notified of changes to the format, since bazel dump --action_cache isn't public API.
     # We continue gracefully, rather than asserting, because we can (conservatively) continue without hitting cache.
     if not marked_as_empty and not action_keys:
-        log_warning(">>> Failed to get action keys from Bazel.\nPlease file an issue with the following log:")
-        print(action_cache_process.stdout, file=sys.stderr)
+        log_warning(">>> Failed to get action keys from Bazel.\nPlease file an issue with the following log:\n", action_cache_process.stdout)
 
     return action_keys
 
