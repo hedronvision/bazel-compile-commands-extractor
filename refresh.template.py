@@ -149,29 +149,32 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     return set(headers)
 
 
+# Roughly 1 year into the future. This is safely below bazel's 10 year margin, but large enough that no sane normal file should be past this.
+BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365
 @functools.lru_cache(maxsize=None)
 def _get_cached_adjusted_modified_time(path: str):
-    """A fast (cached) way to get the modified time of files.
+    """Get (and cache!) the modified time of a file, slighly adjusted for easy comparison.
 
-    Otherwise, most of our runtime in the cached case ends up being mtime stat'ing the same headers over and over again.
+    This is primarily intended to check whether header include caches are fresh.
 
-    Intended for checking whether header include caches are fresh.
-    Contains some adjustments to make checking as simple as comparing modified times.
+    If the file doesn't exist or is inaccessible (either because it was deleted or wasn't generated), return 0.
+    For bazel's internal sources, which have timestamps 10 years in the future, also return 0.
+
+    Without the cache, most of our runtime in the cached case is `stat`'ing the same headers repeatedly.
     """
     try:
         mtime = os.path.getmtime(path)
-    except OSError:  # File doesn't exist.
-        return 0  # For our purposes, doesn't exist means we don't have a newer version, so we'll return a very old time that'll always qualify the cache as fresh in a comparison.
-        # Two cases here:
-        # (1) Somehow it weren't generated in the build that created the depfile. We therefore won't get any fresher by building, so we'll treat that as good enough.
-        # (2) Or it's been deleted since we last cached, in which case we'd rather use the cached version if its otherwise fresh.
+    except OSError:  # The file doesn't exist or is inaccessible.
+        # For our purposes, this means we don't have a newer version, so we'll return a very old time that'll always qualify the cache as fresh in a comparison. There are two cases here:
+            # (1) Somehow it wasn't generated in the build that created the depfile. We therefore won't get any fresher by building, so we'll treat that as good enough; or
+            # (2) It has been deleted since we last cached, in which case we'd rather use the cached version if it's otherwise fresh.
+        return 0
 
-    # Bazel internal sources have timestamps 10y in the future as part of an mechanism to detect and prevent modification, so we'll similarly ignore those, since they shouldn't be changing.
+    # Bazel internal sources have timestamps 10 years in the future as part of a mechanism to detect and prevent modification, so we'll similarly ignore those, since they shouldn't be changing.
     if mtime > BAZEL_INTERNAL_SOURCE_CUTOFF:
         return 0
 
     return mtime
-BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365  # 1year in to the future. Safely below bazel's 10y margin, but high enough that no sane normal file should be past this.
 
 
 def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
