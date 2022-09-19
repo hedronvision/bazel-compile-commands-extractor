@@ -936,10 +936,10 @@ def _ensure_gitignore_entries_exist():
 
     # Each (pattern, explanation) will be added to the `.gitignore` file if the pattern isn't present.
     needed_entries = [
-        ('/external', "# The external link: Differs on Windows vs macOS/Linux, so we can't check it in. The pattern needs to not have a trailing / because it's a symlink on macOS/Linux."),
-        ('/bazel-*', "# Bazel output symlinks: Same reasoning as /external. You need the * because people can change the name of the directory your repository is cloned into, changing the bazel-<workspace_name> symlink."),
-        ('/compile_commands.json', "# Compiled output -> don't check in"),
-        ('/.cache/', "# Directory where clangd puts its indexing work"),
+        ('/external', "# Ignore the `external` link (that is added by `bazel-compile-commands-extractor`). The link differs between macOS/Linux and Windows, so it shouldn't be checked in. The pattern must not end with a trailing `/` because it's a symlink on macOS/Linux."),
+        ('/bazel-*', "# Ignore links to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which your repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux."),
+        ('/compile_commands.json', "# Ignore generated output. Although valuable (after all, the primary purpose of `bazel-compile-commands-extractor` is to produce `compile_commands.json`!), it should not be checked in."),
+        ('/.cache/', "# Ignore the directory in which `clangd` stores its local index."),
     ]
 
     # Create `.gitignore` if it doesn't exist (and don't truncate if it does) and open it for appending/updating.
@@ -955,7 +955,7 @@ def _ensure_gitignore_entries_exist():
         if lines and lines[-1]:
             print(file=gitignore)
         # Add a nice header.
-        print("### Added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor", file=gitignore)
+        print("### Automatically added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor", file=gitignore)
         # Append the missing entries.
         for pattern, comment in missing:
             print(comment, file=gitignore)

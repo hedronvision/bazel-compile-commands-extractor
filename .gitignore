@@ -2,11 +2,11 @@
 .DS_Store
 
 ### This tool (`bazel-compile-commands-extractor`) automatically ensures the following entries are present in any WORKSPACE from which it is invoked:
-# Ignore the `external` symlink (that is added by `bazel-compile-commands-extractor`). The link differs between macOS/Linux and Windows, so it shouldn't be checked in. The pattern must not end with a trailing `/` because it's a symlink on macOS/Linux.
+# Ignore the `external` link (that is added by `bazel-compile-commands-extractor`). The link differs between macOS/Linux and Windows, so it shouldn't be checked in. The pattern must not end with a trailing `/` because it's a symlink on macOS/Linux.
 /external
-# Ignore symlinks to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which the repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux.
+# Ignore links to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which the repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux.
 /bazel-*
-# Ignore compiled output. Although valuable (after all, the primary purpose of `bazel-compile-commands-extractor` is to produce `compile_commands.json`!), it should not be checked in.
+# Ignore generated output. Although valuable (after all, the primary purpose of `bazel-compile-commands-extractor` is to produce `compile_commands.json`!), it should not be checked in.
 /compile_commands.json
 # Ignore the directory in which `clangd` stores its local index.
 /.cache/
