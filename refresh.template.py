@@ -923,16 +923,16 @@ def _ensure_external_workspaces_link_exists():
 
 def _ensure_gitignore_entries_exist():
     """Ensure `/compile_commands.json`, `/external`, and other useful entries are `.gitignore`'d if it looks like git is used."""
-    # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case the bazel workspace lives underneath the top-level git repository.
-    # See https://stackoverflow.com/questions/2180270/check-if-current-directory-is-a-git-repository for a few ways to test.
-    is_git_repository = subprocess.run('git rev-parse --git-dir',
-        shell=True,  # Ensure this will still fail with a nonzero error code even if `git` isn't installed, unifying error cases.
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    ).returncode == 0  # A nonzero error code indicates that we are not (nested) within a git repository.
 
     # Do nothing if we aren't within a git repository and there is no `.gitignore` file. We still add to the .gitignore file if it exists, even if we aren't in a git repository (perhaps because git was temporarily uninstalled).
-    if not is_git_repository and not os.path.isfile('.gitignore'):
-        return
+    if not os.path.isfile('.gitignore'): # Check .gitignore first as a fast path
+        # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case the bazel workspace lives underneath the top-level git repository.
+        # See https://stackoverflow.com/questions/2180270/check-if-current-directory-is-a-git-repository for a few ways to test.
+        is_git_repository = subprocess.run('git rev-parse --git-dir',
+            shell=True,  # Ensure this will still fail with a nonzero error code even if `git` isn't installed, unifying error cases.
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ).returncode == 0  # A nonzero error code indicates that we are not (nested) within a git repository.
+        if not is_git_repository: return
 
     # Each (pattern, explanation) will be added to the `.gitignore` file if the pattern isn't present.
     needed_entries = [
