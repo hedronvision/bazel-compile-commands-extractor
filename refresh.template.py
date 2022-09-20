@@ -144,8 +144,6 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     return set(headers)
 
 
-# Roughly 1 year into the future. This is safely below bazel's 10 year margin, but large enough that no sane normal file should be past this.
-BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365
 @functools.lru_cache(maxsize=None)
 def _get_cached_adjusted_modified_time(path: str):
     """Get (and cache!) the modified time of a file, slighly adjusted for easy comparison.
@@ -170,6 +168,8 @@ def _get_cached_adjusted_modified_time(path: str):
         return 0
 
     return mtime
+# Roughly 1 year into the future. This is safely below bazel's 10 year margin, but large enough that no sane normal file should be past this.
+BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365
 
 
 def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
