@@ -136,8 +136,13 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     target, dependencies = d_file_content.split(':', 1)
     target = target.strip()  # Remove the optional trailing space.
     assert target.endswith('.o'), "Something went wrong in makefile parsing to get headers. The target should be an object file. Output:\n" + d_file_content
-    # Undo shell-like line wrapping because it's inconsistently applied and depends on the lengths of the filenames. We'll punt handling (escaped) spaces in filenames, because Makefiles themselves [don't seem to really support escaping spaces](https://stackoverflow.com/questions/30687828/how-to-escape-spaces-inside-a-makefile).
-    dependencies = dependencies.replace('\\\n', '').split()
+    # Undo shell-like line wrapping because the newlines aren't eaten by shlex.join. Note also that it's the line wrapping is inconsistently generated across compilers and depends on the lengths of the filenames, so you can't just split on the escaped newlines.
+    dependencies = dependencies.replace('\\\n', '')
+    # On Windows, swap out (single) backslash path directory separators for forward slash. Shlex otherwise eats the separators...and Windows gcc intermixes backslash separators with backslash escaped spaces. For a real example of gcc run from Windows, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/81
+    if os.name == 'nt':
+        dependencies = re.sub(r'\\(?=[^ \\])', '/', dependencies)
+    # We'll use shlex.split as a good proxy for escaping, but note that Makefiles themselves [don't seem to really support escaping spaces](https://stackoverflow.com/questions/30687828/how-to-escape-spaces-inside-a-makefile).
+    dependencies = shlex.split(dependencies)
     source, *headers = dependencies  # The first dependency is a source entry, only used to (optionally) sanity-check the dependencies if a source path is provided.
     assert source_path_for_sanity_check is None or source.endswith(source_path_for_sanity_check), "Something went wrong in makefile parsing to get headers. The first dependency should be the source file. Output:\n" + d_file_content
     # Make the headers unique, because GCC [sometimes emits duplicate entries](https://github.com/hedronvision/bazel-compile-commands-extractor/issues/7#issuecomment-975109458).
