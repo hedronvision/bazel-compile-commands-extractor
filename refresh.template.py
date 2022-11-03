@@ -700,6 +700,10 @@ def _all_platform_patch(compile_args: typing.List[str]):
     # For more context see: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/21
     compile_args = (arg for arg in compile_args if not arg == '-fno-canonical-system-headers')
 
+    # Swap -isysroot for --sysroot to work around (probably) https://github.com/clangd/clangd/issues/1305
+    # For context, see https://github.com/clangd/clangd/issues/1305
+    compile_args = ('-isysroot'+arg[len('--sysroot'):] if arg.startswith('--sysroot') else arg for arg in compile_args)
+
     # Strip out -gcc-toolchain to work around https://github.com/clangd/clangd/issues/1248
     skip_next = False
     new_compile_args = []
