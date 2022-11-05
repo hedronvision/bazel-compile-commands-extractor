@@ -209,6 +209,13 @@ On the other hand, if you've set things up and they're working well, we'd still 
 We'd also love to work with you on contributions and improvements, of course! Development setup is easy, not onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md) The codebase is super clean and friendly. Stepping into the code is a fun and efficient way to get the improvements you want.
 
 ---
+
+## Other Projects Likely Of Interest
+
+If you're using Bazel for the C language family, it's likely you're also in need of a good way of making secure network requests.
+If so, please check out our other project, [hedronvision/bazel-make-cc-https-easy](https://github.com/hedronvision/bazel-make-cc-https-easy).
+
+---
 *Looking for implementation details instead? Want to dive into the codebase?*
 See [ImplementationReadme.md](./ImplementationReadme.md).
 
