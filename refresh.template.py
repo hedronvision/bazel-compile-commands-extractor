@@ -28,6 +28,7 @@ import os
 import pathlib
 import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 import time
@@ -240,6 +241,17 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     # But often, we can get the headers, despite the error.
 
     return _parse_headers_from_makefile_deps(header_search_process.stdout)
+
+
+@functools.lru_cache(maxsize=None)
+def _get_clang_or_gcc():
+    """Returns clang or gcc, if you have one of them on your path."""
+    if shutil.which('clang'):
+        return 'clang'
+    elif shutil.which('gcc'):
+        return 'gcc'
+    else:
+        return None
 
 
 def windows_list2cmdline(seq):
@@ -498,7 +510,18 @@ def _get_headers(compile_action, source_path: str):
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers = _get_headers_msvc(compile_action.arguments, source_path)
     else:
-        headers = _get_headers_gcc(compile_action.arguments, source_path, compile_action.actionKey)
+        # Emscripten is tricky. There isn't an easy way to make it emcc run without lots of environment variables.
+        # So...rather than doing our usual script unwrapping, we just swap in clang/gcc and use that to get headers, knowing that they'll accept the same argument format.
+            # You can unwrap emcc.sh to emcc.py via next(pathlib.Path('external').glob('emscripten_bin_*/emscripten/emcc.py')).as_posix()
+            # But then the underlying emcc needs a configuration file that itself depends on lots of environment variables.
+            # If we ever pick this back up, note that you can supply that config via compile_args += ["--em-config", "external/emsdk/emscripten_toolchain/emscripten_config"]
+        args = compile_action.arguments
+        if args[0].endswith('emcc.sh') or args[0].endswith('emcc.bat'):
+            alternate_compiler = _get_clang_or_gcc()
+            if not alternate_compiler: return set() # Skip getting headers.
+            args = args.copy()
+            args[0] = alternate_compiler
+        headers = _get_headers_gcc(args, source_path, compile_action.actionKey)
 
     # Cache for future use
     if output_file:
@@ -664,7 +687,6 @@ def _apple_platform_patch(compile_args: typing.List[str]):
 
     This function has fixes specific to Apple platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not.
     """
-    compile_args = list(compile_args)
     # Bazel internal environment variable fragment that distinguishes Apple platforms that need unwrapping.
         # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is.
     if any('__BAZEL_XCODE_' in arg for arg in compile_args):
@@ -702,7 +724,8 @@ def _all_platform_patch(compile_args: typing.List[str]):
 
     # Swap -isysroot for --sysroot to work around (probably) https://github.com/clangd/clangd/issues/1305
     # For context, see https://github.com/clangd/clangd/issues/1305
-    compile_args = ('-isysroot'+arg[len('--sysroot'):] if arg.startswith('--sysroot') else arg for arg in compile_args)
+    # The = logic has to do with clang not accepting -isysroot=, but accepting --sysroot=. Note that -isysroot <path> is accepted, though undocumented.
+    compile_args = ('-isysroot'+arg[len('--sysroot')+arg.startswith('--sysroot='):] if arg.startswith('--sysroot') else arg for arg in compile_args)
 
     # Strip out -gcc-toolchain to work around https://github.com/clangd/clangd/issues/1248
     skip_next = False
