@@ -154,15 +154,15 @@ Then, open VSCode *user* settings, so things will be automatically set up for al
 
 Search for "clangd".
 
-Add the following (separate) entries to `"clangd.arguments"`:
+Add the following three separate entries to `"clangd.arguments"`:
 ```Shell
 --header-insertion=never
 --compile-commands-dir=${workspaceFolder}/
+--query-driver=**
 ```
 (Just copy each as written; VSCode will correctly expand `${workspaceFolder}` for each workspace.)
-  -  They get rid of (overzealous) header insertion and locate the compile commands correctly, even when browsing system headers outside the source tree.
+  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause `clangd` to interrogate Bazel's compiler wrappers to figure out which system headers are included by default.
   -  If your Bazel `WORKSPACE` is a subdirectory of your project, change `--compile-commands-dir` to point into that subdirectory by overriding *both* flags in your *workspace* settings
-  -  If later you discover that clangd isn't finding system headers correctly, try adding `--query-driver=**` to the above list of arguments. This causes `clangd` to interrogate Bazel's compiler wrappers more deeply to figure out which system headers are included by default. However, while it fixes some issues, it also causes others; Clangd has some bugs here, unfortunately. <!-- https://github.com/clangd/clangd/issues/1378 -->
 
 <!-- At least until https://github.com/clangd/vscode-clangd/issues/138 is resolved. -->
 Turn on: Clangd: Check Updates
