@@ -68,6 +68,10 @@ def refresh_compile_commands(
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
     if not targets:  # Default to all targets in main workspace
         targets = {"@//...": ""}
+    elif type(targets) == "select": # Allow select: https://bazel.build/reference/be/functions#select
+        # Pass select() to _expand_template to make it work
+        # see https://bazel.build/docs/configurable-attributes#faq-select-macro
+        pass
     elif type(targets) == "list":  # Allow specifying a list of targets w/o arguments
         targets = {target: "" for target in targets}
     elif type(targets) != "dict":  # Assume they've supplied a single string/label and wrap it
