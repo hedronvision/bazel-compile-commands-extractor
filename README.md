@@ -179,7 +179,7 @@ You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the 
 
 ### Other Editors
 
-If you're using another editor, you'll need to follow the same rough steps as above: [get the latest version of clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the same flags as VSCode. We know people have had an easy time setting up this tool with other editors, like Emacs, for example.
+If you're using another editor, you'll need to follow the same rough steps as above: [get the latest version of clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the same flags as VSCode. We know people have had an easy time setting up this tool with other editors, like Emacs and Vim+YouCompleteMe(YCM), for example.
 
 Once you've succeeded in setting up another editor—or set up `clang-tidy`, or otherwise seen anything that might improve this readme—we'd love it if you'd give back and contribute what you know! Just edit this `README.md` on GitHub and file a PR :)
 
