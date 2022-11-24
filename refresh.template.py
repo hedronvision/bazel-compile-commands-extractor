@@ -224,7 +224,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     # Relies on our having made the workspace directory simulate a complete version of the execroot with //external symlink
     header_cmd = list(header_cmd) + ['--dependencies', '--print-missing-file-dependencies']
 
-    header_search_process = subprocess.run(
+    header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed( # Note: gcc/clang can be run from Windows, too.
         header_cmd,
         capture_output=True,
         encoding=locale.getpreferredencoding(),
@@ -321,6 +321,34 @@ def windows_list2cmdline(seq):
     return ''.join(result)
 
 
+def _subprocess_run_spilling_over_to_param_file_if_needed(command: typing.List[str], **kwargs):
+    """Same as subprocess.run, but it handles the case where the command line length is exceeded on Windows and we need a param file."""
+
+    # On non-Windows, we have to run directly via a special case.
+    # Otherwise, any exceptions will also trigger a NameError, since WindowsError is not defined outside of Windows.
+    if os.name != 'nt':
+        return subprocess.run(command, **kwargs)
+
+    # See https://docs.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
+    try:
+        return subprocess.run(command, **kwargs)
+    except WindowsError as e:
+        # We handle the error instead of calculating the command length because the length includes escaping internal to the subprocess.run call
+        if e.winerror == 206:  # Thrown when command is too long, despite the error message being "The filename or extension is too long". For a few more details see also https://stackoverflow.com/questions/2381241/what-is-the-subprocess-popen-max-length-of-the-args-parameter
+            # Write command to a temporary file, so we can use it as a parameter file to the compiler.
+            # E.g. cl.exe @params_file.txt
+            # tempfile.NamedTemporaryFile doesn't work because cl.exe can't open it--as the Python docs would indicate--so we have to do cleanup ourselves.
+            fd, path = tempfile.mkstemp(text=True)
+            try:
+                os.write(fd, windows_list2cmdline(command[1:]).encode()) # should skip cl.exe the 1st line.
+                os.close(fd)
+                return subprocess.run([command[0], f'@{path}'], **kwargs)
+            finally: # Safe cleanup even in the event of an error
+                os.remove(path)
+        else: # Some other WindowsError we didn't mean to catch.
+            raise
+
+
 def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
     """Gets the headers used by a particular compile command that uses msvc argument formatting (including clang-cl.)
 
@@ -347,35 +375,14 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
         # End:   template filled by Bazel
     ))
 
-    def _search_headers(command):
-        return subprocess.run(
-            command,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            env=environment,
-            encoding=locale.getpreferredencoding(),
-            check=False, # We explicitly ignore errors and carry on.
-        )
-
-    try:
-        header_search_process = _search_headers(header_cmd)
-    except WindowsError as e:
-        # Handle case where command line length is exceeded and we need a param file.
-            # See https://docs.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation
-        # We handle the error instead of calculating the command length because the length includes escaping internal to the subprocess.run call
-        if e.winerror == 206:  # Thrown when command is too long, despite the error message being "The filename or extension is too long". For a few more details see also https://stackoverflow.com/questions/2381241/what-is-the-subprocess-popen-max-length-of-the-args-parameter
-            # Write header_cmd to a temporary file, so we can use it as a parameter file to cl.exe.
-            # E.g. cl.exe @params_file.txt
-            # tempfile.NamedTemporaryFile doesn't work because cl.exe can't open it--as the Python docs would indicate--so we have to do cleanup ourselves.
-            fd, path = tempfile.mkstemp(text=True)
-            try:
-                os.write(fd, windows_list2cmdline(header_cmd[1:]).encode()) # should skip cl.exe the 1st line.
-                os.close(fd)
-                header_search_process = _search_headers([header_cmd[0], f'@{path}'])
-            finally: # Safe cleanup even in the event of an error
-                os.remove(path)
-        else: # Some other WindowsError we didn't mean to catch.
-            raise
+    _header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed(
+        header_cmd,
+        stderr=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        env=environment,
+        encoding=locale.getpreferredencoding(),
+        check=False, # We explicitly ignore errors and carry on.
+    )
 
     # Based on the locale, `cl.exe` will emit different marker strings. See also https://github.com/ninja-build/ninja/issues/613#issuecomment-885185024 and https://github.com/bazelbuild/bazel/pull/7966.
     # We can't just set environment['VSLANG'] = "1033" (English) and be done with it, because we can't assume the user has the English language pack installed.
