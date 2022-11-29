@@ -1,0 +1,9 @@
+pull_request_rules:
+  - name: automatic merge for pre-commit ci updates
+  # pre-commit ci won't automerge (see https://github.com/pre-commit-ci/issues/issues/48), but we're already trusting them, and it's worth automating away the manual merge.
+    conditions:
+      - author=pre-commit-ci[bot]
+      - title=[pre-commit.ci] pre-commit autoupdate
+    actions:
+      merge:
+        method: merge
