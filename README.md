@@ -141,7 +141,9 @@ For now, we'd suggest continuing on to set up `clangd` (below). Thereafter, if y
 
 ## Editor Setup — for autocomplete based on `compile_commands.json`
 
+
 ### VSCode
+
 Let's get `clangd`'s extension installed and configured.
 
 ```Shell
