@@ -139,6 +139,10 @@ Adding `exclude_external_sources = True` and `exclude_headers = "external"` can 
 
 For now, we'd suggest continuing on to set up `clangd` (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of `clangd` and/or this tool to index quickly, take a look at the docs at the top of [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
 
+### If you're using Gazelle:
+
+Please add `# gazelle:exclude external` to the BUILD file in your workspace root--just until https://github.com/bazelbuild/bazel-gazelle/pull/1384 is resolved. They have an issue we fixed for them; follow (and 👍) [that PR](https://github.com/bazelbuild/bazel-gazelle/pull/1384), so you know when you can remove this workaround.
+
 ## Editor Setup — for autocomplete based on `compile_commands.json`
 
 
