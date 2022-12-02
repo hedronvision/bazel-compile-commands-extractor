@@ -83,21 +83,21 @@ We'll get it running and then move onto the next section while it whirrs away. B
 
 #### There are four common paths:
 
-##### 1. Have a relatively simple codebase, where every target builds without needing any additional configuration or flags?
+##### 1. Have a relatively simple codebase, where every target builds without needing any additional configuration or flags beyond what's in .bazelrc?
 
 In that case, just `bazel run @hedron_compile_commands//:refresh_all`
 
 Note: you have to `bazel run` this tool, not just `bazel build` it.
 
-##### 2. Are there flags, e.g., `--config=Debug --compilation_mode=dbg`, that you apply manually apply to all your builds while developing?
+##### 2. Are there Bazel flags, e.g., `--config=my_important_flags_or_toolchains --compilation_mode=dbg`, that you apply manually apply to all your builds while developing?
 
-It's fairly important that you supply the flags when running this tool, too, so we can accurately understand the build, where files are being generated, etc.
+It's fairly important that you supply those same Bazel flags when running this tool, too, so we can accurately understand the build, where files are being generated, etc.
 
-Append, e.g. `-- --config=Debug --compilation_mode=dbg` to the above, or whatever flags you normally build with while developing.
+Append, e.g. `-- --config=my_important_flags_or_toolchains --compilation_mode=dbg` to the above, or whatever flags you normally build with while developing.
 
 Note: the extra `--` is not a typo, and functions to pass the flags to this tool when it runs rather than when it builds. Your command should look like:
 
-`bazel run @hedron_compile_commands//:refresh_all -- --config=Debug --compilation_mode=dbg`
+`bazel run @hedron_compile_commands//:refresh_all -- --config=my_important_flags_or_toolchains --compilation_mode=dbg`
 
 ##### 3. Often, though, you'll want to specify the output targets you care about and/or what flags they individually need. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. An example of the latter is an android_library, which probably cannot be built independently of the android_binary that configures it.
 
