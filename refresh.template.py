@@ -473,10 +473,16 @@ def _get_headers(compile_action, source_path: str):
 
     output_file = None
     for i, arg in enumerate(compile_action.arguments):
-        if arg == '-o': # clang/gcc. Docs https://clang.llvm.org/docs/ClangCommandLineReference.html
+        # As a reference, clang docs: https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang1-o-file
+        if arg == '-o' or arg == '--output': # clang/gcc. Docs https://clang.llvm.org/docs/ClangCommandLineReference.html
             output_file = compile_action.arguments[i+1]
-        elif arg.startswith('/Fo'): # MSVC *and clang*. MSVC docs https://docs.microsoft.com/en-us/cpp/build/reference/compiler-options-listed-alphabetically?view=msvc-170
+            break
+        elif arg.startswith('/Fo') or arg.startswith('-Fo'): # MSVC *and clang*. MSVC docs https://docs.microsoft.com/en-us/cpp/build/reference/compiler-options-listed-alphabetically?view=msvc-170
             output_file = arg[3:]
+            break
+        elif arg.startswith('--output='):
+            output_file = arg[9:]
+            break
     # Since our output file parsing isn't complete, fall back on a warning message to solicit help.
     # A more full (if more involved) solution would be to get the primaryOutput for the action from the aquery output, but this should handle the cases Bazel emits.
     if not output_file and not _get_headers.has_logged:
