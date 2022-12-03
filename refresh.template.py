@@ -603,7 +603,7 @@ def _get_files(compile_action):
     header_files = _get_headers(compile_action, source_file)
 
     # Ambiguous .h headers need a language specified if they aren't C, or clangd sometimes makes mistakes
-    # Delete this and unused extension variables when clangd > 15.0.3 is released, since their underlying issues are resolved at HEAD
+    # Delete this and unused extension variables when clangd >= 16 is released, since their underlying issues are resolved at HEAD
     # Reference issues:
     # https://github.com/clangd/clangd/issues/1173
     # https://github.com/clangd/clangd/issues/1263
