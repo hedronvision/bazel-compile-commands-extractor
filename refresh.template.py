@@ -909,13 +909,15 @@ def _get_commands(target: str, flags: str):
     try:
         # object_hook -> SimpleNamespace allows object.member syntax, like a proto, while avoiding the protobuf dependency
         parsed_aquery_output = json.loads(aquery_process.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
-        # Further mimic a proto by protecting against the case where there are no actions found.
-        # Otherwise, SimpleNamespace, unlike a real proto, won't create an actions attribute, leading to an AttributeError on access.
-        if not hasattr(parsed_aquery_output, 'actions'):
-            parsed_aquery_output.actions = []
     except json.JSONDecodeError:
         print("Bazel aquery failed. Command:", aquery_args, file=sys.stderr)
         log_warning(f">>> Failed extracting commands for {target}\n    Continuing gracefully...")
+        return
+
+    if not getattr(parsed_aquery_output, 'actions', None): # Unifies cases: No actions (or actions list is empty)
+        log_warning(f""">>> Bazel lists no applicable compile commands for {target}
+    If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
+    Continuing gracefully...""")
         return
 
     yield from _convert_compile_commands(parsed_aquery_output)
