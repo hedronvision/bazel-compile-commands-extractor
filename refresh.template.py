@@ -107,8 +107,8 @@ def _warn_if_file_doesnt_exist(source_file):
         You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
         [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
     Continuing gracefully...""")
-        return False
-    return True
+        return True
+    return False
 _warn_if_file_doesnt_exist.has_logged_missing_file_error = False
 
 @functools.lru_cache(maxsize=None)
@@ -594,7 +594,7 @@ def _get_files(compile_action):
     assert source_file.endswith(_get_files.source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
 
     # Warn gently about missing files
-    if not _warn_if_file_doesnt_exist(source_file):
+    if _warn_if_file_doesnt_exist(source_file):
         return {source_file}, set()
 
     # Note: We need to apply commands to headers and sources.
