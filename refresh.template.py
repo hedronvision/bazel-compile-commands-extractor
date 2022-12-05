@@ -723,7 +723,7 @@ def _apple_platform_patch(compile_args: typing.List[str], environmentVariables =
         # Bazel wraps the compiler as `external/local_config_cc/wrapped_clang` and exports that wrapped compiler in the proto. However, we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
         # Bazel wrapps the swiftc as `external/build_bazel_rules_swift/tools/worker/worker swiftc ` and worker has been removed in apple_swift_patch
         # Removing the wrapper is also important because Bazel's Xcode (but not CommandLineTools) wrapper crashes if you don't specify particular environment variables (replaced below). We'd need the wrapper to be invokable by clangd's --query-driver if we didn't remove the wrapper.
-        
+
         if compile_args[0].endswith('swiftc'):
             compile_args[0] = 'swiftc'
         else:
