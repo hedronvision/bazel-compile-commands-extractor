@@ -704,14 +704,7 @@ def _apple_swift_patch(compile_args: typing.List[str]):
     # We need to remove it (build_bazel_rules_swift/tools/worker/worker)
     compile_args.pop(0)
 
-    # The worker also expand the arguments defined in swift_rule which was start with -Xwrapped-swift
-    # Expand -debug-prefix-pwd-is-dot
-    match = next((i for i,v in enumerate(compile_args) if v == "-Xwrapped-swift=-debug-prefix-pwd-is-dot"), None)
-    if match:
-        compile_args[match] = "-debug-prefix-map"
-        compile_args.insert(match + 1, os.environ["BUILD_WORKSPACE_DIRECTORY"] + "=.")
-
-    # Remove other -Xwrapped-swift arguments like `-ephemeral-module-cache` `-global-index-store-import-path`
+    # Remove other -Xwrapped-swift arguments like `-debug-prefix-pwd-is-dot` `-ephemeral-module-cache` `-global-index-store-import-path`
     # We could override index-store by config sourcekit-lsp
     compile_args = [arg for arg in compile_args if not arg.startswith('-Xwrapped-swift')]
 
