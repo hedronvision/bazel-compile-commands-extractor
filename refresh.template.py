@@ -375,7 +375,7 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
         # End:   template filled by Bazel
     ))
 
-    _header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed(
+    header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed(
         header_cmd,
         stderr=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
