@@ -553,29 +553,37 @@ def _get_files(compile_action):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
 
     # Getting the source file is a little trickier than it might seem.
-    # Bazel seems to consistently put the source file being compiled either:
-        # before the -o flag, for GCC-formatted commands, or
-        # after the /c flag, for MSVC-formatted commands
-        # [See https://github.com/hedronvision/bazel-compile-commands-extractor/pull/72 for -c counterexample for GCC]
-    # This is a strong assumption about Bazel internals, so we're taking some care to check that this condition holds with asserts. That way things are less likely to fail silently if it changes some day.
-        # You can definitely have a proper invocation to clang/gcc/msvc where these assumptions don't hold.
+
+    # First, we do the obvious thing: Filter args to those that look like source files.
+    source_file_candidates = [arg for arg in compile_action.arguments if not arg.startswith('-') and arg.endswith(_get_files.source_extensions)]
+    assert source_file_candidates, f"No source files found in compile args: {compile_action.arguments}.\nPlease file an issue with this information!"
+    source_file = source_file_candidates[0]
+
+    # If we've got multiple candidates for source files, apply heuristics based on how Bazel tends to format commands.
+    # Note: Bazel, with its incremental building strategy, should only be compiling one source file per action.
+    if len(source_file_candidates) > 1:
+        # How does this case arise? Sometimes header search directories have source-file extensions. Horrible, but unfortunately true. See https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37 for context and history.
+        # You can't simply further filter the args to those that aren't existing directories...because they can be generated directories that don't yet exist. Indeed the example in the PR (linked above) is this case.
+        # Bazel seems to consistently put the source file being compiled either:
+            # before the -o flag, for GCC-formatted commands, or
+            # after the /c flag, for MSVC-formatted commands
+            # [See https://github.com/hedronvision/bazel-compile-commands-extractor/pull/72 for -c counterexample for GCC]
+        # This is a strong assumption about Bazel internals, so we're taking some care to check that this condition holds with asserts. That way things are less likely to fail silently if it changes some day.
+            # You can definitely have a proper invocation to clang/gcc/msvc where these assumptions don't hold.
         # However, parsing the command line this way is our best simple option. The other alternatives seem worse:
-            # You can't just filter the args to those that end with source-file extensions. The problem is that sometimes header search directories have source-file extensions. Horrible, but unfortunately true. See https://github.com/hedronvision/bazel-compile-commands-extractor/pull/37 for context and history.
-                # Parsing the clang invocation properly to get the positional file arguments is hard and not future-proof if new flags are added. Consider a new flag -foo. Does it also capture the next argument after it?
-                # Similarly, you can't just further filter the args to those that don't begin with - and aren't directories...because they can be generated directories. Indeed the example from the PR (above) is.
+            # Parsing the clang invocation properly to get the positional file arguments is hard and not future-proof if new flags are added. Consider a new flag -foo. Does it also capture the next argument after it?
             # You might be tempted to crawl the inputs depset in the aquery output structure, but it's a fair amount of recursive code and there are other erroneous source files there, at least when building for Android in Bazel 5.1. You could fix this by intersecting the set of source files in the inputs with those listed as arguments on the command line, but I can imagine perverse, problematic cases here. It's a lot more code to still have those caveats.
             # You might be tempted to get the source files out of the action message listed (just) in aquery --output=text  output, but the message differs for external workspaces and tools. Plus paths with spaces are going to be hard because it's space delimited. You'd have to make even stronger assumptions than the -c.
                 # Concretely, the message usually has the form "action 'Compiling foo.cpp'"" -> foo.cpp. But it also has "action 'Compiling src/tools/launcher/dummy.cc [for tool]'" -> external/bazel_tools/src/tools/launcher/dummy.cc
                 # If we did ever go this route, you can join the output from aquery --output=text and --output=jsonproto by actionKey.
+        if '-o' in compile_action.arguments: # GCC, pre -o case
+            source_index = compile_action.arguments.index('-o') - 1
+        else: # MSVC, post /C case
+            assert '/c' in compile_action.arguments, f"-o or /c, required for parsing sources in GCC or MSVC-formatted commands, respectively, not found in compile args: {compile_action.arguments}.\nPlease file an issue with this information!"
+            source_index = compile_action.arguments.index('/c') + 1
 
-    if '-o' in compile_action.arguments: # GCC, pre -o case
-        source_index = compile_action.arguments.index('-o') - 1
-    else: # MSVC, post /C case
-        assert '/c' in compile_action.arguments, f"-o or /c, required for parsing sources in GCC or MSVC-formatted commands, respectively, not found in compile args: {compile_action.arguments}.\nPlease file an issue with this information!"
-        source_index = compile_action.arguments.index('/c') + 1
-
-    source_file = compile_action.arguments[source_index]
-    assert source_file.endswith(_get_files.source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
+        source_file = compile_action.arguments[source_index]
+        assert source_file.endswith(_get_files.source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
 
     # Warn gently about missing files
     if not os.path.isfile(source_file):
