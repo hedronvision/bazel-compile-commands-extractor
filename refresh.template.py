@@ -553,11 +553,17 @@ _get_headers.has_logged = False
 def _get_files(compile_action):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
 
+    # If we've got swift action just return sources
+    if compile_action.mnemonic == 'SwiftCompile':
+        source_files = set(filter(lambda arg: arg.endswith(_get_files.swift_source_extension), compile_action.arguments))
+        return source_files, set()
+
     # Getting the source file is a little trickier than it might seem.
 
     # First, we do the obvious thing: Filter args to those that look like source files.
-    source_file_candidates = [arg for arg in compile_action.arguments if not arg.startswith('-') and arg.endswith(_get_files.source_extensions)]
+    source_file_candidates = [arg for arg in compile_action.arguments if not arg.startswith('-') and arg.endswith(_get_files.c_family_source_extensions)]
     assert source_file_candidates, f"No source files found in compile args: {compile_action.arguments}.\nPlease file an issue with this information!"
+
     source_file = source_file_candidates[0]
 
     # If we've got multiple candidates for source files, apply heuristics based on how Bazel tends to format commands.
@@ -584,7 +590,7 @@ def _get_files(compile_action):
             source_index = compile_action.arguments.index('/c') + 1
 
         source_file = compile_action.arguments[source_index]
-        assert source_file.endswith(_get_files.source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
+        assert source_file.endswith(_get_files.c_family_source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
 
     # Warn gently about missing files
     if not os.path.isfile(source_file):
@@ -640,7 +646,8 @@ _get_files.opencl_source_extensions = ('.cl',)
 _get_files.openclxx_source_extensions = ('.clcpp',)
 _get_files.assembly_source_extensions = ('.s', '.asm')
 _get_files.assembly_needing_c_preprocessor_source_extensions = ('.S',)
-_get_files.source_extensions = _get_files.c_source_extensions + _get_files.cpp_source_extensions + _get_files.objc_source_extensions + _get_files.objcpp_source_extensions + _get_files.cuda_source_extensions + _get_files.opencl_source_extensions + _get_files.openclxx_source_extensions + _get_files.assembly_source_extensions + _get_files.assembly_needing_c_preprocessor_source_extensions
+_get_files.swift_source_extension = '.swift'
+_get_files.c_family_source_extensions = _get_files.c_source_extensions + _get_files.cpp_source_extensions + _get_files.objc_source_extensions + _get_files.objcpp_source_extensions + _get_files.cuda_source_extensions + _get_files.opencl_source_extensions + _get_files.openclxx_source_extensions + _get_files.assembly_source_extensions + _get_files.assembly_needing_c_preprocessor_source_extensions
 _get_files.extensions_to_language_args = { # Note that clangd fails on the --language or -ObjC or -ObjC++ forms. See https://github.com/clangd/clangd/issues/1173#issuecomment-1226847416
     _get_files.c_source_extensions: '-xc',
     _get_files.cpp_source_extensions: '-xc++',
@@ -673,17 +680,25 @@ def _get_apple_SDKROOT(SDK_name: str):
     # Traditionally stored in SDKROOT environment variable, but not provided by Bazel. See https://github.com/bazelbuild/bazel/issues/12852
 
 
-def _get_apple_platform(compile_args: typing.List[str]):
+def _get_apple_platform(compile_action):
     """Figure out which Apple platform a command is for.
 
     Is the name used by Xcode in the SDK files, not the marketing name.
     e.g. iPhoneOS, not iOS.
     """
     # A bit gross, but Bazel specifies the platform name in one of the include paths, so we mine it from there.
+    compile_args = compile_action.arguments
     for arg in compile_args:
         match = re.search('/Platforms/([a-zA-Z]+).platform/Developer/', arg)
         if match:
             return match.group(1)
+    if getattr(compile_action, 'environmentVariables', None):
+         match = next(
+             filter(lambda x: x.key == "APPLE_SDK_PLATFORM", compile_action.environmentVariables),
+             None
+         )
+         if match:
+             return match.value
     return None
 
 
@@ -695,18 +710,21 @@ def _get_apple_DEVELOPER_DIR():
     # Traditionally stored in DEVELOPER_DIR environment variable, but not provided by Bazel. See https://github.com/bazelbuild/bazel/issues/12852
 
 
-def _apple_platform_patch(compile_args: typing.List[str]):
+def _apple_platform_patch(compile_action):
     """De-Bazel the command into something clangd can parse.
 
     This function has fixes specific to Apple platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not.
     """
     # Bazel internal environment variable fragment that distinguishes Apple platforms that need unwrapping.
         # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is.
+    compile_args = compile_action.arguments
     if any('__BAZEL_XCODE_' in arg for arg in compile_args):
         # Undo Bazel's Apple platform compiler wrapping.
         # Bazel wraps the compiler as `external/local_config_cc/wrapped_clang` and exports that wrapped compiler in the proto. However, we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
         # Removing the wrapper is also important because Bazel's Xcode (but not CommandLineTools) wrapper crashes if you don't specify particular environment variables (replaced below). We'd need the wrapper to be invokable by clangd's --query-driver if we didn't remove the wrapper.
-        compile_args[0] = 'clang'
+
+        if compile_action.mnemonic != 'SwiftCompile':
+            compile_args[0] = 'clang'
 
         # We have to manually substitute out Bazel's macros so clang can parse the command
         # Code this mirrors is in https://github.com/bazelbuild/bazel/blob/master/tools/osx/crosstool/wrapped_clang.cc
@@ -715,12 +733,28 @@ def _apple_platform_patch(compile_args: typing.List[str]):
         # We also have to manually figure out the values of SDKROOT and DEVELOPER_DIR, since they're missing from the environment variables Bazel provides.
         # Filed Bazel issue about the missing environment variables: https://github.com/bazelbuild/bazel/issues/12852
         compile_args = [arg.replace('__BAZEL_XCODE_DEVELOPER_DIR__', _get_apple_DEVELOPER_DIR()) for arg in compile_args]
-        apple_platform = _get_apple_platform(compile_args)
+        apple_platform = _get_apple_platform(compile_action)
         assert apple_platform, f"Apple platform not detected in CMD: {compile_args}"
         compile_args = [arg.replace('__BAZEL_XCODE_SDKROOT__', _get_apple_SDKROOT(apple_platform)) for arg in compile_args]
 
     return compile_args
 
+
+def _swift_patch(compile_args: typing.List[str]):
+
+    # rules_swift add a worker for wrapping if enable --persistent_worker flag (https://bazel.build/remote/persistent)
+    # https://github.com/bazelbuild/rules_swift/blob/master/swift/internal/actions.bzl#L236
+    # We need to remove it (build_bazel_rules_swift/tools/worker/worker)
+    while len(compile_args) > 0 and (not 'swiftc' in compile_args[0]):
+        compile_args.pop(0)
+
+    assert len(compile_args) > 0, "No compiler found in swift_path"
+    compile_args[0] = 'swiftc'
+
+    # Remove -Xwrapped-swift introduced by rules_swift
+    compile_args = [arg for arg in compile_args if not arg.startswith('-Xwrapped-swift')]
+
+    return compile_args
 
 def _all_platform_patch(compile_args: typing.List[str]):
     """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
@@ -758,14 +792,16 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _get_cpp_command_for_files(compile_action):
+def _get_command_for_files(compile_action):
     """Reformat compile_action into a compile command clangd can understand.
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
     # Patch command by platform
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
-    compile_action.arguments = _apple_platform_patch(compile_action.arguments)
+    compile_action.arguments = _apple_platform_patch(compile_action)
+    if compile_action.mnemonic == 'SwiftCompile':
+        compile_action.arguments = _swift_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(compile_action)
@@ -803,7 +839,7 @@ def _convert_compile_commands(aquery_output):
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
+        outputs = threadpool.map(_get_command_for_files, aquery_output.actions)
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
@@ -863,7 +899,7 @@ def _get_commands(target: str, flags: str):
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
         # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
-        f"mnemonic('(Objc|Cpp)Compile',{target_statment})",
+        f"mnemonic('(Objc|Cpp|Swift)Compile',{target_statment})",
         # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
         '--output=jsonproto',
         # We'll disable artifact output for efficiency, since it's large and we don't use them. Small win timewise, but dramatically less json output from aquery.
