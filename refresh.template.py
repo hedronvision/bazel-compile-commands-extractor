@@ -467,8 +467,9 @@ def _get_headers(compile_action, source_path: str):
 
     if {exclude_headers} == "all":
         return set()
-    elif {exclude_headers} == "external" and compile_action.is_external:
+    elif {exclude_headers} == "external" and not {exclude_external_sources} and compile_action.is_external:
         # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
+        # The `not {exclude_external_sources}`` clause makes sure is_external was precomputed; there are no external actions if they've already been filtered in the process of excluding external sources.
         return set()
 
     output_file = None
@@ -783,7 +784,7 @@ def _convert_compile_commands(aquery_output):
     """
 
     # Tag actions as external if we're going to need to know that later.
-    if {exclude_external_sources} or {exclude_headers} == "external":
+    if {exclude_headers} == "external" and not {exclude_external_sources}:
         targets_by_id = {target.id : target.label for target in aquery_output.targets}
 
         def _amend_action_as_external(action):
@@ -796,9 +797,6 @@ def _convert_compile_commands(aquery_output):
             return action
 
         aquery_output.actions = (_amend_action_as_external(action) for action in aquery_output.actions)
-
-        if {exclude_external_sources}:
-            aquery_output.actions = filter(lambda action: not action.is_external, aquery_output.actions)
 
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
@@ -855,13 +853,17 @@ def _get_commands(target: str, flags: str):
     In a moment, Bazel will likely fail to parse.""")
 
     # First, query Bazel's C-family compile actions for that configured target
+    target_statment = f'deps({target})'
+    if {exclude_external_sources}:
+        # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
+        target_statment = f"filter('^//',{target_statment})"
     aquery_args = [
         'bazel',
         'aquery',
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
         # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
-        f"mnemonic('(Objc|Cpp)Compile',deps({target}))",
+        f"mnemonic('(Objc|Cpp)Compile',{target_statment})",
         # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
         '--output=jsonproto',
         # We'll disable artifact output for efficiency, since it's large and we don't use them. Small win timewise, but dramatically less json output from aquery.
