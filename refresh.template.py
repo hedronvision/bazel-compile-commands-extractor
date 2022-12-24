@@ -3,8 +3,9 @@ As a template, this file helps implement the refresh_compile_commands rule and i
 
 Interface (after template expansion):
 - `bazel run` to regenerate compile_commands.json, so autocomplete (and any other clang tooling!) reflect the latest Bazel build files.
-    - No arguments are needed; info from the rule baked into the template expansion.
+    - No arguments are needed; info from the rule is baked into the template expansion.
         - Any arguments passed are interpreted as arguments needed for the builds being analyzed.
+        - The one exception is --file=<file_target>, which can be used to update commands for just one file. This is intended for programmatic use from editor plugins.
     - Requires being run under Bazel so we can access the workspace root environment variable.
 - Output: a compile_commands.json in the workspace root that clang tooling (or you!) can look at to figure out how files are being compiled by Bazel
     - Crucially, this output is de-Bazeled; The result is a command that could be run from the workspace root directly, with no Bazel-specific requirements, environment variables, etc.
@@ -835,14 +836,20 @@ def _get_commands(target: str, flags: str):
     # Log clear completion messages
     log_info(f">>> Analyzing commands used in {target}")
 
+    # Pass along all arguments to aquery, except for --file=
     additional_flags = shlex.split(flags) + [arg for arg in sys.argv[1:] if not arg.startswith('--file=')]
-    file_flags = [arg for arg in sys.argv[1:] if arg.startswith('--file=')]
-    assert len(file_flags) < 2, f"Only one or zero --file is supported current args = {sys.argv[1:]}"
+    file_flags = [arg[len('--file='):] for arg in sys.argv[1:] if arg.startswith('--file=')]
+    if len(file_flags) > 1:
+        log_error(">>> At most one --file flag is supported.")
+        sys.exit(1)
+    if any(arg.startswith('--file') for arg in additional_flags):
+        log_error(">>> Only the --file=<file_target> form is supported.")
+        sys.exit(1)
 
     # Detect anything that looks like a build target in the flags, and issue a warning.
-    # Note that positional arguments after -- are all interpreted as target patterns. (If it's at the end, then no worries.)
+    # Note that positional arguments after -- are all interpreted as target patterns.
     # And that we have to look for targets. checking for a - prefix is not enough. Consider the case of `-c opt` leading to a false positive
-    if ('--' in additional_flags[:-1]
+    if ('--' in additional_flags
         or any(re.match(r'-?(@|:|//)', f) for f in additional_flags)):
         log_warning(""">>> The flags you passed seem to contain targets.
     Try adding them as targets in your refresh_compile_commands rather than flags.
@@ -860,25 +867,22 @@ def _get_commands(target: str, flags: str):
     if {exclude_external_sources}:
         # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
         target_statment = f"filter('^(//|@//)',{target_statment})"
-    if (len(file_flags) == 1):
-        # Strip --file=
-        file_path = file_flags[0][7:]
-        # Query escape
-        file_path = file_path.replace("+", "\+").replace("-", "\-")
-        # For header file we try to find from hdrs and srcs to get the targets
-        if file_path.endswith('.h'):
-            # Since attr function can't query with full path, get the file name to query
-            head, tail = os.path.split(file_path)
-            target_statment = f"attr(hdrs, '{tail}', {target_statment}) + attr(srcs, '{tail}', {target_statment})"
+    if file_flags:
+        file_path = file_flags[0]
+        if file_path.endswith(_get_files.source_extensions):
+            target_statment = f"inputs('{re.escape(file_path)}', {target_statment})"
         else:
-            target_statment = f"inputs('{file_path}', {target_statment})"
+            # For header files we try to find from hdrs and srcs to get the targets
+            # Since attr function can't query with full path, get the file name to query
+            fname = os.path.basename(file_path)
+            target_statment = f"let v = {target_statment} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)"
     aquery_args = [
         'bazel',
         'aquery',
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
         # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
-        f"mnemonic('(Objc|Cpp)Compile',{target_statment})",
+        f"mnemonic('(Objc|Cpp)Compile', {target_statment})",
         # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
         '--output=jsonproto',
         # We'll disable artifact output for efficiency, since it's large and we don't use them. Small win timewise, but dramatically less json output from aquery.
@@ -1081,6 +1085,17 @@ if __name__ == '__main__':
         log_error(""">>> Not (over)writing compile_commands.json, since no commands were extracted and an empty file is of no use.
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
+    # --file triggers incremental update of compile_commands.json
+    if any(arg.startswith('--file=') for arg in sys.argv[1:]) and os.path.isfile('compile_commands.json'):
+        previous_compile_command_entries = []
+        try:
+            with open('compile_commands.json') as compile_commands_file:
+                previous_compile_command_entries = json.load(compile_commands_file)
+        except:
+            log_warning(">>> Couldn't read previous compile_commands.json. Overwriting instead of merging...")
+        else:
+            updated_files = set(entry['file'] for entry in compile_command_entries)
+            compile_command_entries += [entry for entry in previous_compile_command_entries if entry['file'] not in updated_files]
 
     # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:
