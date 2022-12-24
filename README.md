@@ -197,7 +197,6 @@ There should be a `compile_commands.json` file in the root of your workspace, en
 
 Behind the scenes, that `compile_commands.json` file contains entries describing all the commands used to build every source file in your project. And, for now, there's also one entry per header, describing one way it is compiled. (This gets you great autocomplete in header files, too, so you don't have to think about [`clangd`'s biggest rough edge](https://github.com/clangd/clangd/issues/123)). Crucially, all these commands have been sufficiently de-Bazeled for clang tooling (or you!) to understand them.
 
-
 ### Here's what you should be expecting, based on our experience:
 
 We use this tool every day to develop a cross-platform library for iOS and Android on macOS. Expect Android completion in Android source, macOS in macOS, iOS in iOS, etc. People use it on Linux/Ubuntu and Windows, too.
