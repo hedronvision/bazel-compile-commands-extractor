@@ -8,9 +8,8 @@ refresh_compile_commands(
     name = "refresh_all",
 )
 
-
 ########################################
 # Implementation:
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
-exports_files(["refresh.template.py"]) # For implicit use by refresh_compile_commands.
+exports_files(["refresh.template.py"])  # For implicit use by refresh_compile_commands.

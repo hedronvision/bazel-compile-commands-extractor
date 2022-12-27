@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 As a template, this file helps implement the refresh_compile_commands rule and is not part of the user interface. See ImplementationReadme.md for top-level context -- or refresh_compile_commands.bzl for narrower context.
 
@@ -971,11 +972,11 @@ def _ensure_external_workspaces_link_exists():
     It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.""")
 
 
-def _ensure_gitignore_entries_exist():
+def _ensure_gitignore_entries_exist(ignore_file):
     """Ensure `/compile_commands.json`, `/external`, and other useful entries are `.gitignore`'d if it looks like git is used."""
 
     # Do nothing if we aren't within a git repository and there is no `.gitignore` file. We still add to the .gitignore file if it exists, even if we aren't in a git repository (perhaps because git was temporarily uninstalled).
-    if not os.path.isfile('.gitignore'): # Check .gitignore first as a fast path
+    if not os.path.isfile(ignore_file): # Check .gitignore first as a fast path
         # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case the bazel workspace lives underneath the top-level git repository.
         # See https://stackoverflow.com/questions/2180270/check-if-current-directory-is-a-git-repository for a few ways to test.
         is_git_repository = subprocess.run('git rev-parse --git-dir',
@@ -993,7 +994,7 @@ def _ensure_gitignore_entries_exist():
     ]
 
     # Create `.gitignore` if it doesn't exist (and don't truncate if it does) and open it for appending/updating.
-    with open('.gitignore', 'a+') as gitignore:
+    with open(ignore_file, 'a+') as gitignore:
         gitignore.seek(0)  # Files opened in `a` mode seek to the end, so we reset to the beginning so we can read.
         # Recall that trailing spaces, when escaped with `\`, are meaningful to git. However, none of the entries for which we're searching end with literal spaces, so we can safely trim all trailing whitespace. That said, we can't rewrite these stripped lines to the file, in case an existing entry is e.g. `/foo\ `, matching the file "foo " (with a trailing space), whereas the entry `/foo\` does not match the file `"foo "`.
         lines = [l.rstrip() for l in gitignore]
@@ -1010,7 +1011,7 @@ def _ensure_gitignore_entries_exist():
         for pattern, comment in missing:
             print(comment, file=gitignore)
             print(pattern, file=gitignore)
-    log_success(">>> Automatically added entries to .gitignore to avoid problems.")
+    log_success(">>> Automatically added entries to {} to avoid problems.".format(ignore_file))
 
 
 def _ensure_cwd_is_workspace_root():
@@ -1027,15 +1028,21 @@ def _ensure_cwd_is_workspace_root():
 
 
 if __name__ == '__main__':
-    _ensure_cwd_is_workspace_root()
-    _ensure_gitignore_entries_exist()
-    _ensure_external_workspaces_link_exists()
-
     target_flag_pairs = [
         # Begin: template filled by Bazel
         {target_flag_pairs}
         # End:   template filled by Bazel
     ]
+
+    install_config = {
+{compile_commands_install_config}
+    }
+
+    _ensure_cwd_is_workspace_root()
+    _ensure_gitignore_entries_exist(
+        ignore_file = install_config.get("ignore_file", ".gitignore")
+    )
+    _ensure_external_workspaces_link_exists()
 
     compile_command_entries = []
     for (target, flags) in target_flag_pairs:

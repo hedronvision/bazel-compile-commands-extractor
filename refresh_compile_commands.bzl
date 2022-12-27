@@ -52,11 +52,12 @@ refresh_compile_commands(
 ```
 """
 
-
 ########################################
 # Implementation
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
+load("@hedron_compile_commands_install_config//:config.bzl", _install_config = "INSTALL_CONFIG")
+load("//:private/util.bzl", _write_dict_entries = "write_dict_entries")
 
 def refresh_compile_commands(
         name,
@@ -68,7 +69,7 @@ def refresh_compile_commands(
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
     if not targets:  # Default to all targets in main workspace
         targets = {"@//...": ""}
-    elif type(targets) == "select": # Allow select: https://bazel.build/reference/be/functions#select
+    elif type(targets) == "select":  # Allow select: https://bazel.build/reference/be/functions#select
         # Pass select() to _expand_template to make it work
         # see https://bazel.build/docs/configurable-attributes#faq-select-macro
         pass
@@ -85,6 +86,7 @@ def refresh_compile_commands(
 def _expand_template_impl(ctx):
     """Inject targets of interest into refresh.template.py, and set it up to be run."""
     script = ctx.actions.declare_file(ctx.attr.name)
+
     ctx.actions.expand_template(
         output = script,
         is_executable = True,
@@ -95,6 +97,10 @@ def _expand_template_impl(ctx):
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
+            "{compile_commands_install_config}": _write_dict_entries(
+                _install_config,
+                indent_level = 2,
+            ),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -103,7 +109,7 @@ _expand_template = rule(
     attrs = {
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
-        "exclude_headers": attr.string(values = ["all", "external", ""]), # "" needed only for compatibility with Bazel < 3.6.0
+        "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),  # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
     },
