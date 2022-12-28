@@ -93,8 +93,8 @@ def _expand_template_impl(ctx):
             # Note, don't delete whitespace. Correctly doing multiline indenting.
             "        {target_flag_pairs}": "\n".join(["        {},".format(pair) for pair in ctx.attr.labels_to_flags.items()]),
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
-            "{exclude_headers}": '"' + str(ctx.attr.exclude_headers) + '"',
-            "{exclude_external_sources}": str(ctx.attr.exclude_external_sources),
+            "{exclude_headers}": repr(ctx.attr.exclude_headers),
+            "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
         },
     )
     return DefaultInfo(files = depset([script]))
