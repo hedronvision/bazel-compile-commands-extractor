@@ -786,17 +786,11 @@ def _convert_compile_commands(aquery_output):
     # Tag actions as external if we're going to need to know that later.
     if {exclude_headers} == "external" and not {exclude_external_sources}:
         targets_by_id = {target.id : target.label for target in aquery_output.targets}
-
-        def _amend_action_as_external(action):
-            """Tag action as external if it's created by an external target"""
+        for action in aquery_output.actions:
+            # Tag action as external if it's created by an external target
             target = targets_by_id[action.targetId] # Should always be present. KeyError as implicit assert.
-            assert not target.startswith("@//"), f"Expecting local targets to start with // in aquery output. Found @// for action {action}, target {target}"
-            assert not target.startswith("//external"), f"Expecting external targets will start with @. Found //external for action {action}, target {target}"
-
-            action.is_external = target.startswith("@")
-            return action
-
-        aquery_output.actions = (_amend_action_as_external(action) for action in aquery_output.actions)
+            assert not target.startswith('//external'), f"Expecting external targets will start with @. Found //external for action {action}, target {target}"
+            action.is_external = target.startswith('@') and not target.startswith('@//')
 
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
@@ -856,7 +850,7 @@ def _get_commands(target: str, flags: str):
     target_statment = f'deps({target})'
     if {exclude_external_sources}:
         # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
-        target_statment = f"filter('^//',{target_statment})"
+        target_statment = f"filter('^(//|@//)',{target_statment})"
     aquery_args = [
         'bazel',
         'aquery',
