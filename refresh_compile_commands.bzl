@@ -105,7 +105,9 @@ _expand_template = rule(
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external", ""]), # "" needed only for compatibility with Bazel < 3.6.0
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
-        "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),  # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
+        # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
+        # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
+        "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
     },
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],  # Needed for find_cpp_toolchain with --incompatible_enable_cc_toolchain_resolution
     implementation = _expand_template_impl,
