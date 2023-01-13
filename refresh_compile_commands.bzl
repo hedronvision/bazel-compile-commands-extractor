@@ -68,7 +68,7 @@ def refresh_compile_commands(
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
     if not targets:  # Default to all targets in main workspace
         targets = {"@//...": ""}
-    elif type(targets) == "select": # Allow select: https://bazel.build/reference/be/functions#select
+    elif type(targets) == "select":  # Allow select: https://bazel.build/reference/be/functions#select
         # Pass select() to _expand_template to make it work
         # see https://bazel.build/docs/configurable-attributes#faq-select-macro
         pass
@@ -103,7 +103,7 @@ _expand_template = rule(
     attrs = {
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
-        "exclude_headers": attr.string(values = ["all", "external", ""]), # "" needed only for compatibility with Bazel < 3.6.0
+        "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
         # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
