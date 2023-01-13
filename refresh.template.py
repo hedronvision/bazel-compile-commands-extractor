@@ -997,7 +997,7 @@ def _ensure_gitignore_entries_exist():
         (f'/{pattern_prefix}external', "# Ignore the `external` link (that is added by `bazel-compile-commands-extractor`). The link differs between macOS/Linux and Windows, so it shouldn't be checked in. The pattern must not end with a trailing `/` because it's a symlink on macOS/Linux."),
         (f'/{pattern_prefix}bazel-*', "# Ignore links to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which your repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux. This ignore pattern should almost certainly be checked into a .gitignore in your workspace root, too, for folks who don't use this tool."),
         (f'/{pattern_prefix}compile_commands.json', "# Ignore generated output. Although valuable (after all, the primary purpose of `bazel-compile-commands-extractor` is to produce `compile_commands.json`!), it should not be checked in."),
-        (f'/{pattern_prefix}.cache/', "# Ignore the directory in which `clangd` stores its local index."),
+        ('.cache/', "# Ignore the directory in which `clangd` stores its local index."),
     ]
 
     # Create `.gitignore` if it doesn't exist (and don't truncate if it does) and open it for appending/updating.
