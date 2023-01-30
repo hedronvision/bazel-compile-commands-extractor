@@ -574,7 +574,7 @@ def _get_files(compile_action):
 
     # If we've got swift action just return sources
     if compile_action.mnemonic == 'SwiftCompile':
-        source_files = set(filter(lambda arg: arg.endswith(_get_files.swift_source_extension), compile_action.arguments))
+        source_files = set(arg for arg in compile_action.arguments if arg.endswith(_get_files.swift_source_extensions))
         for source_file in source_files:
             _warn_if_file_doesnt_exist(source_file)
 
@@ -656,7 +656,7 @@ _get_files.opencl_source_extensions = ('.cl',)
 _get_files.openclxx_source_extensions = ('.clcpp',)
 _get_files.assembly_source_extensions = ('.s', '.asm')
 _get_files.assembly_needing_c_preprocessor_source_extensions = ('.S',)
-_get_files.swift_source_extension = '.swift'
+_get_files.swift_source_extensions = ('.swift',)
 _get_files.c_family_source_extensions = _get_files.c_source_extensions + _get_files.cpp_source_extensions + _get_files.objc_source_extensions + _get_files.objcpp_source_extensions + _get_files.cuda_source_extensions + _get_files.opencl_source_extensions + _get_files.openclxx_source_extensions + _get_files.assembly_source_extensions + _get_files.assembly_needing_c_preprocessor_source_extensions
 _get_files.extensions_to_language_args = { # Note that clangd fails on the --language or -ObjC or -ObjC++ forms. See https://github.com/clangd/clangd/issues/1173#issuecomment-1226847416
     _get_files.c_source_extensions: '-xc',
