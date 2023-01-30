@@ -644,7 +644,6 @@ def _get_files(compile_action):
         compile_action.arguments.insert(1, lang_flag)
 
     return {source_file}, header_files
-_get_files.has_logged_missing_file_error = False
 # Setup extensions and flags for the whole C-language family.
 # Clang has a list: https://github.com/llvm/llvm-project/blob/b9f3b7f89a4cb4cf541b7116d9389c73690f78fa/clang/lib/Driver/Types.cpp#L293
 _get_files.c_source_extensions = ('.c', '.i')
