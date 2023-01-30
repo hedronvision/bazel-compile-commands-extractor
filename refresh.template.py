@@ -756,20 +756,18 @@ def _swift_patch(compile_action):
     """
 
     compile_args = compile_action.arguments
-    if compile_action.mnemonic != 'SwiftCompile':
-        return
+    if compile_action.mnemonic == 'SwiftCompile':
+        # rules_swift add a worker for wrapping if enable --persistent_worker flag (https://bazel.build/remote/persistent)
+        # https://github.com/bazelbuild/rules_swift/blob/master/swift/internal/actions.bzl#L236
+        # We need to remove it (build_bazel_rules_swift/tools/worker/worker)
+        while len(compile_args) > 0 and (not 'swiftc' in compile_args[0]):
+            compile_args.pop(0)
 
-    # rules_swift add a worker for wrapping if enable --persistent_worker flag (https://bazel.build/remote/persistent)
-    # https://github.com/bazelbuild/rules_swift/blob/master/swift/internal/actions.bzl#L236
-    # We need to remove it (build_bazel_rules_swift/tools/worker/worker)
-    while len(compile_args) > 0 and (not 'swiftc' in compile_args[0]):
-        compile_args.pop(0)
+        assert len(compile_args) > 0, "No compiler found in swift_path"
+        compile_args[0] = 'swiftc'
 
-    assert len(compile_args) > 0, "No compiler found in swift_path"
-    compile_args[0] = 'swiftc'
-
-    # Remove -Xwrapped-swift introduced by rules_swift
-    compile_args = [arg for arg in compile_args if not arg.startswith('-Xwrapped-swift')]
+        # Remove -Xwrapped-swift introduced by rules_swift
+        compile_args = [arg for arg in compile_args if not arg.startswith('-Xwrapped-swift')]
 
     return compile_args
 
