@@ -724,9 +724,9 @@ def _apple_platform_patch(compile_action):
 
     This function has fixes specific to Apple platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not.
     """
+    compile_args = compile_action.arguments
     # Bazel internal environment variable fragment that distinguishes Apple platforms that need unwrapping.
         # Note that this occurs in the Xcode-installed wrapper, but not the CommandLineTools wrapper, which works fine as is.
-    compile_args = compile_action.arguments
     if any('__BAZEL_XCODE_' in arg for arg in compile_args):
         # Undo Bazel's Apple platform compiler wrapping.
         # Bazel wraps the compiler as `external/local_config_cc/wrapped_clang` and exports that wrapped compiler in the proto. However, we need a clang call that clangd can introspect. (See notes in "how clangd uses compile_commands.json" in ImplementationReadme.md for more.)
@@ -749,7 +749,15 @@ def _apple_platform_patch(compile_action):
     return compile_args
 
 
-def _swift_patch(compile_args: typing.List[str]):
+def _swift_patch(compile_action):
+    """De-Bazel the command into something sourecekit-lsp can parse.
+
+    This function has fixes specific to Swift, but you should call it on all platforms. It'll determine whether the fixes should be applied or not.
+    """
+
+    compile_args = compile_action.arguments
+    if compile_action.mnemonic != 'SwiftCompile':
+        return
 
     # rules_swift add a worker for wrapping if enable --persistent_worker flag (https://bazel.build/remote/persistent)
     # https://github.com/bazelbuild/rules_swift/blob/master/swift/internal/actions.bzl#L236
@@ -765,8 +773,12 @@ def _swift_patch(compile_args: typing.List[str]):
 
     return compile_args
 
-def _all_platform_patch(compile_args: typing.List[str]):
+
+def _all_platform_patch(compile_action):
     """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
+
+    compile_args = compile_action.arguments
+
     # clangd writes module cache files to the wrong place
     # Without this fix, you get tons of module caches dumped into the VSCode root folder.
     # Filed clangd issue at: https://github.com/clangd/clangd/issues/655
@@ -807,10 +819,9 @@ def _get_command_for_files(compile_action):
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
     # Patch command by platform
-    compile_action.arguments = _all_platform_patch(compile_action.arguments)
+    compile_action.arguments = _all_platform_patch(compile_action)
     compile_action.arguments = _apple_platform_patch(compile_action)
-    if compile_action.mnemonic == 'SwiftCompile':
-        compile_action.arguments = _swift_patch(compile_action.arguments)
+    compile_action.arguments = _swift_patch(compile_action)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(compile_action)
