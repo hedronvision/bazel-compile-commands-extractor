@@ -94,25 +94,6 @@ def _print_header_finding_warning_once():
 _print_header_finding_warning_once.has_logged = False
 
 
-def _warn_if_file_doesnt_exist(source_file):
-    if not os.path.isfile(source_file):
-        if not _warn_if_file_doesnt_exist.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
-            _warn_if_file_doesnt_exist.has_logged_missing_file_error = True
-            log_warning(f""">>> A source file you compile doesn't (yet) exist: {source_file}
-    It's probably a generated file, and you haven't yet run a build to generate it.
-    That's OK; your code doesn't even have to compile for this tool to work.
-    If you can, though, you might want to run a build of your code.
-        That way everything is generated, browsable and indexed for autocomplete.
-    However, if you have *already* built your code, and generated the missing file...
-        Please make sure you're supplying this tool with the same flags you use to build.
-        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
-        [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
-    Continuing gracefully...""")
-        return True
-    return False
-_warn_if_file_doesnt_exist.has_logged_missing_file_error = False
-
-
 @functools.lru_cache(maxsize=None)
 def _get_bazel_cached_action_keys():
     """Gets the set of actionKeys cached in bazel-out."""
@@ -567,6 +548,25 @@ def _get_headers(compile_action, source_path: str):
 
     return headers
 _get_headers.has_logged = False
+
+
+def _warn_if_file_doesnt_exist(source_file):
+    if not os.path.isfile(source_file):
+        if not _warn_if_file_doesnt_exist.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
+            _warn_if_file_doesnt_exist.has_logged_missing_file_error = True
+            log_warning(f""">>> A source file you compile doesn't (yet) exist: {source_file}
+    It's probably a generated file, and you haven't yet run a build to generate it.
+    That's OK; your code doesn't even have to compile for this tool to work.
+    If you can, though, you might want to run a build of your code.
+        That way everything is generated, browsable and indexed for autocomplete.
+    However, if you have *already* built your code, and generated the missing file...
+        Please make sure you're supplying this tool with the same flags you use to build.
+        You can either use a refresh_compile_commands rule or the special -- syntax. Please see the README.
+        [Supplying flags normally won't work. That just causes this tool to be built with those flags.]
+    Continuing gracefully...""")
+        return True
+    return False
+_warn_if_file_doesnt_exist.has_logged_missing_file_error = False
 
 
 def _get_files(compile_action):
