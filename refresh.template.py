@@ -102,6 +102,7 @@ def _get_bazel_cached_action_keys():
         capture_output=True,
         encoding=locale.getpreferredencoding(),
         check=True, # Should always succeed.
+        shell=True, # Resolve `bazel` using the shell. Otherwise user aliases are not visible in subprocess.
     )
 
     action_keys = set()
