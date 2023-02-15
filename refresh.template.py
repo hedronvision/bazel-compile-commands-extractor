@@ -884,6 +884,7 @@ def _get_commands(target: str, flags: str):
         capture_output=True,
         encoding=locale.getpreferredencoding(),
         check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
+        shell=True, # Resolve `bazel` using the shell. Otherwise user aliases are not visible in subprocess.
     )
 
 
