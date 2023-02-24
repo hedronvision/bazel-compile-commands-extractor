@@ -973,7 +973,7 @@ def _ensure_external_workspaces_link_exists():
 
 def _ensure_gitignore_entries_exist():
     """Ensure `//compile_commands.json`, `//external`, and other useful entries are `.gitignore`'d if in a git repo."""
-    # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case the bazel workspace is nested inside the git repository.
+    # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case, e.g., the bazel workspace is nested inside the git repository or you're off in git worktree.
     git_dir_process = subprocess.run('git rev-parse --git-dir',
         shell=True,  # Ensure this will still fail with a nonzero error code even if `git` isn't installed, unifying error cases.
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -988,9 +988,14 @@ def _ensure_gitignore_entries_exist():
     # Hidden gitignore documented in https://git-scm.com/docs/gitignore
     git_dir = pathlib.Path(git_dir_process.stdout.rstrip())
     hidden_gitignore_path = git_dir / 'info' / 'exclude'
-    pattern_prefix = str(pathlib.Path.cwd().relative_to(git_dir.parent.absolute()))
-    if pattern_prefix == '.': pattern_prefix = ''
-    elif pattern_prefix: pattern_prefix += '/'
+
+    # Get path to the workspace root (current working directory) from the git repository root
+    git_prefix_process = subprocess.run(['git', 'rev-parse', '--show-prefix'],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        encoding=locale.getpreferredencoding(),
+        check=True, # Should always succeed if the other did
+    )
+    pattern_prefix = git_prefix_process.stdout.rstrip()
 
     # Each (pattern, explanation) will be added to the `.gitignore` file if the pattern isn't present.
     needed_entries = [
