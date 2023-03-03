@@ -37,6 +37,8 @@ import tempfile
 import time
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
+import threading
+import itertools
 
 
 @enum.unique
@@ -182,6 +184,7 @@ def _get_cached_adjusted_modified_time(path: str):
 # Roughly 1 year into the future. This is safely below bazel's 10 year margin, but large enough that no sane normal file should be past this.
 BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365
 
+BAZEL_INTERNAL_MAX_HEADER_SEARCH_COUNT = 500
 
 def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
@@ -766,11 +769,15 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _get_cpp_command_for_files(compile_action):
+def _get_cpp_command_for_files(args):
     """Reformat compile_action into a compile command clangd can understand.
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
+    (compile_action, event, should_stop_lambda) = args
+    if event.is_set():
+        return set(), set(), []
+
     # Patch command by platform
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
@@ -778,10 +785,12 @@ def _get_cpp_command_for_files(compile_action):
 
     source_files, header_files = _get_files(compile_action)
 
+    if not event.is_set() and should_stop_lambda(source_files, header_files):
+        event.set()
     return source_files, header_files, compile_action.arguments
 
 
-def _convert_compile_commands(aquery_output):
+def _convert_compile_commands(aquery_output, should_stop_lambda):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
@@ -805,8 +814,8 @@ def _convert_compile_commands(aquery_output):
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
-
+        event = threading.Event()
+        outputs = threadpool.map(_get_cpp_command_for_files, map(lambda action: (action, event, should_stop_lambda), aquery_output.actions))
     # Yield as compile_commands.json entries
     header_files_already_written = set()
     for source_files, header_files, compile_command_args in outputs:
@@ -833,7 +842,19 @@ def _convert_compile_commands(aquery_output):
 
 def _get_commands(target: str, flags: str):
     """Return compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
-    def _get_commands(target_statment):
+    lock = threading.RLock()
+    counter = itertools.count()
+    def _should_stop(headers, file_path):
+        if file_path:
+            with lock:
+                tried_count = next(counter)
+            if tried_count >= BAZEL_INTERNAL_MAX_HEADER_SEARCH_COUNT:
+                log_warning(f""">>> Bazel lists no applicable compile commands for {file_path} in {target} under {tried_count} Attempt.""")
+                return True
+            return any(header.endswith(file_path) for header in headers)
+        return False
+
+    def _get_commands(target_statment, file_path):
         aquery_args = [
             'bazel',
             'aquery',
@@ -899,7 +920,7 @@ def _get_commands(target: str, flags: str):
         Continuing gracefully...""")
             return []
 
-        return _convert_compile_commands(parsed_aquery_output)
+        return _convert_compile_commands(parsed_aquery_output, lambda _, headers: _should_stop(headers, file_path))
 
     # Log clear completion messages
     log_info(f">>> Analyzing commands used in {target}")
@@ -949,7 +970,7 @@ def _get_commands(target: str, flags: str):
             ])
 
         for target_statment in target_statment_canidates:
-            compile_commands.extend( _get_commands(target_statment))
+            compile_commands.extend( _get_commands(target_statment, file_path))
             if any(command['file'].endswith(file_path) for command in reversed(compile_commands)):
                 found = True
                 break
@@ -960,7 +981,7 @@ def _get_commands(target: str, flags: str):
         if {exclude_external_sources}:
             # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
             target_statment = f"filter('^(//|@//)',{target_statment})"
-        compile_commands.extend(_get_commands(target_statment))
+        compile_commands.extend(_get_commands(target_statment, None))
         if len(compile_commands) == 0:
             log_warning(f""">>> Bazel lists no applicable compile commands for {target}
         If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
