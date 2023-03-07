@@ -973,8 +973,8 @@ def _ensure_external_workspaces_link_exists():
 
 def _ensure_gitignore_entries_exist():
     """Ensure `//compile_commands.json`, `//external`, and other useful entries are `.gitignore`'d if in a git repo."""
-    # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case, e.g., the bazel workspace is nested inside the git repository or you're off in git worktree.
-    git_dir_process = subprocess.run('git rev-parse --git-dir',
+    # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case, e.g., the bazel workspace is nested inside the git repository or you're off in a git worktree.
+    git_dir_process = subprocess.run('git rev-parse --git-common-dir', # common-dir because despite current gitignore docs, there's just one info/exclude in the common git dir, not one in each of the worktree's git dirs.
         shell=True,  # Ensure this will still fail with a nonzero error code even if `git` isn't installed, unifying error cases.
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         encoding=locale.getpreferredencoding(),
