@@ -386,6 +386,7 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
 
     # Based on the locale, `cl.exe` will emit different marker strings. See also https://github.com/ninja-build/ninja/issues/613#issuecomment-885185024 and https://github.com/bazelbuild/bazel/pull/7966.
     # We can't just set environment['VSLANG'] = "1033" (English) and be done with it, because we can't assume the user has the English language pack installed.
+    # Note that, if we're ever having problems with MSVC changing these strings too often, we can instead infer them by compiling some test files and passing /nologo. See https://github.com/ninja-build/ninja/issues/613#issuecomment-1465084387
     include_marker = (
         'Note: including file:', # English - United States
         '注意: 包含文件: ', # Chinese - People's Republic of China
