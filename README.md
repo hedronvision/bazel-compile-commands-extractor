@@ -189,7 +189,7 @@ If you're using another editor, you'll need to follow the same rough steps as ab
 
 Once you've succeeded in setting up another editor—or set up `clang-tidy`, or otherwise seen anything that might improve this readme—we'd love it if you'd give back and contribute what you know! Just edit this `README.md` on GitHub and file a PR :)
 
-## "Smooth Edges" — what we've enjoyed using this for.
+## "Smooth Edges" — what we've enjoyed using this for
 
 You should now be all set to go! Way to make it through setup.
 
