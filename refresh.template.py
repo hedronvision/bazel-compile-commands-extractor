@@ -14,7 +14,8 @@ import sys
 if sys.version_info < (3,6):
     sys.exit("\n\033[31mFATAL ERROR:\033[0m Python 3.6 or later is required. Please update!")
     # 3.6 backwards compatibility required by @zhanyong-wan in https://github.com/hedronvision/bazel-compile-commands-extractor/issues/111.
-    # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27. Try to contact him before upgrading.
+    # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27.
+    # ^ Try to contact before upgrading.
     # When adding things could be cleaner if we had a higher minimum version, please add a comment with MIN_PY=3.<v>.
     # Similarly, when upgrading, please search for that MIN_PY= tag.
 
@@ -100,8 +101,7 @@ def _get_bazel_cached_action_keys():
     """Gets the set of actionKeys cached in bazel-out."""
     action_cache_process = subprocess.run(
         ['bazel', 'dump', '--action_cache'],
-        # The capture_output argument was introduced in python3.7, so we use
-        # stdout and stderr for python3.6 compatibility.
+        # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding=locale.getpreferredencoding(),
@@ -230,8 +230,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
 
     header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed( # Note: gcc/clang can be run from Windows, too.
         header_cmd,
-        # The capture_output argument was introduced in python3.7, so we use
-        # stdout and stderr for python3.6 compatibility.
+        # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding=locale.getpreferredencoding(),
@@ -241,7 +240,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     # Tolerate failure gracefully--during editing the code may not compile!
     if header_search_process.stderr:
         _print_header_finding_warning_once()
-        print(header_search_process.stderr, file=sys.stderr, end='') # Captured with stdout/stderr and dumped explicitly to avoid interlaced output.
+        print(header_search_process.stderr, file=sys.stderr, end='') # Stderr captured and dumped atomically to avoid interlaced output.
 
     if not header_search_process.stdout: # Worst case, we couldn't get the headers,
         return set()
@@ -889,8 +888,7 @@ def _get_commands(target: str, flags: str):
 
     aquery_process = subprocess.run(
         aquery_args,
-        # The capture_output argument was introduced in python3.7, so we use
-        # stdout and stderr for python3.6 compatibility.
+        # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding=locale.getpreferredencoding(),
