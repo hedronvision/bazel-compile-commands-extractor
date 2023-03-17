@@ -156,7 +156,7 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
 
 @functools.lru_cache(maxsize=None)
 def _get_cached_adjusted_modified_time(path: str):
-    """Get (and cache!) the modified time of a file, slighly adjusted for easy comparison.
+    """Get (and cache!) the modified time of a file, slightly adjusted for easy comparison.
 
     This is primarily intended to check whether header include caches are fresh.
 
