@@ -1063,6 +1063,11 @@ if __name__ == '__main__':
     for (target, flags) in target_flag_pairs:
         compile_command_entries.extend(_get_commands(target, flags))
 
+    if not compile_command_entries:
+        log_error(""">>> Not (over)writing compile_commands.json, since no commands were extracted and an empty file is of no use.
+    There should be actionable warnings, above, that led to this.""")
+        sys.exit(1)
+
     # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:
         json.dump(
