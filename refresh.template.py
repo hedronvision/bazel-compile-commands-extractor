@@ -897,16 +897,12 @@ def _get_commands(target: str, flags: str):
 
 
     # Filter aquery error messages to just those the user should care about.
+    # Shush known warnings about missing graph targets.
+    # The missing graph targets are not things we want to introspect anyway.
+    # Tracking issue https://github.com/bazelbuild/bazel/issues/13007
     missing_targets_warning: typing.Pattern[str] = re.compile(r'(\(\d+:\d+:\d+\) )?(\033\[[\d;]+m)?WARNING: (\033\[[\d;]+m)?Targets were missing from graph:') # Regex handles --show_timestamps and --color=yes. Could use "in" if we ever need more flexibility.
-    for line in aquery_process.stderr.splitlines():
-        # Shush known warnings about missing graph targets.
-        # The missing graph targets are not things we want to introspect anyway.
-        # Tracking issue https://github.com/bazelbuild/bazel/issues/13007.
-        if missing_targets_warning.match(line):
-            continue
-
-        print(line, file=sys.stderr)
-
+    aquery_process.stderr = '\n'.join(line for line in aquery_process.stderr.splitlines() if not missing_targets_warning.match(line))
+    if aquery_process.stderr: print(aquery_process.stderr, file=sys.stderr)
 
     # Parse proto output from aquery
     try:
@@ -918,7 +914,11 @@ def _get_commands(target: str, flags: str):
         return
 
     if not getattr(parsed_aquery_output, 'actions', None): # Unifies cases: No actions (or actions list is empty)
-        log_warning(f""">>> Bazel lists no applicable compile commands for {target}
+        if aquery_process.stderr:
+            log_warning(f""">>> Bazel lists no applicable compile commands for {target}, probably because of errors in your BUILD files, printed above.
+    Continuing gracefully...""")
+        else:
+            log_warning(f""">>> Bazel lists no applicable compile commands for {target}
     If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
     Continuing gracefully...""")
         return
