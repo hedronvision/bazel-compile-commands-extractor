@@ -5,7 +5,7 @@ Interface (after template expansion):
 - `bazel run` to regenerate compile_commands.json, so autocomplete (and any other clang tooling!) reflect the latest Bazel build files.
     - No arguments are needed; info from the rule is baked into the template expansion.
         - Any arguments passed are interpreted as arguments needed for the builds being analyzed.
-        - The one exception is --file=<file_target>, which can be used to update commands for just one file. This is intended for programmatic use from editor plugins.
+        - The one exception is --file=<file_target>, which can be used to incrementally update commands, focused around that one file. This is intended for programmatic use from editor plugins.
     - Requires being run under Bazel so we can access the workspace root environment variable.
 - Output: a compile_commands.json in the workspace root that clang tooling (or you!) can look at to figure out how files are being compiled by Bazel
     - Crucially, this output is de-Bazeled; The result is a command that could be run from the workspace root directly, with no Bazel-specific requirements, environment variables, etc.
