@@ -1041,7 +1041,7 @@ def _ensure_cwd_is_workspace_root():
     try:
         workspace_root = pathlib.Path(os.environ['BUILD_WORKSPACE_DIRECTORY'])
     except KeyError:
-        log_error(""">>> BUILD_WORKSPACE_DIRECTORY was not found in the environment. Make sure to invoke this tool with `bazel run`.""")
+        log_error(">>> BUILD_WORKSPACE_DIRECTORY was not found in the environment. Make sure to invoke this tool with `bazel run`.")
         sys.exit(1)
     # Change the working directory to the workspace root (assumed by future commands).
     # Although this can fail (OSError/FileNotFoundError/PermissionError/NotADirectoryError), there's no easy way to recover, so we'll happily crash.
