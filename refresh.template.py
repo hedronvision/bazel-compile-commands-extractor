@@ -38,7 +38,6 @@ import time
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
 import threading
-import itertools
 
 
 @enum.unique
