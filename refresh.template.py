@@ -738,7 +738,7 @@ def _all_platform_patch(compile_args: typing.List[str]):
     compile_args = (arg for arg in compile_args if not arg.startswith('-fmodules-cache-path=bazel-out/'))
 
     # When Bazel builds with gcc it adds -fno-canonical-system-headers to the command line, which clang tooling chokes on, since it does not understand this flag.
-    # We'll remove this flag, until such time as clangd & clang-tidy gracefully ignore it. Tracking issue: https://github.com/clangd/clangd/issues/1004.
+    # We'll remove this flag, until such time as clangd & clang-tidy gracefully ignore it. Tracking issues: https://github.com/clangd/clangd/issues/1004 and https://github.com/llvm/llvm-project/issues/61699.
     # For more context see: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/21
     compile_args = (arg for arg in compile_args if not arg == '-fno-canonical-system-headers')
 
