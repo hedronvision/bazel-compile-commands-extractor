@@ -969,8 +969,10 @@ def _get_commands(target: str, flags: str):
             ])
 
         for target_statment in target_statment_canidates:
-            compile_commands.extend( _get_commands(target_statment, file_path))
-            if any(command['file'].endswith(file_path) for command in reversed(compile_commands)):
+            commands = _get_commands(target_statment, file_path)
+            # Prevent waste and return them
+            compile_commands.extend(commands)
+            if any(command['file'].endswith(file_path) for command in commands):
                 found = True
                 break
         if not found:
