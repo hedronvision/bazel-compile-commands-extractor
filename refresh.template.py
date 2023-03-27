@@ -485,7 +485,7 @@ def _get_headers(compile_action, source_path: str):
         if arg == '-o' or arg == '--output': # clang/gcc. Docs https://clang.llvm.org/docs/ClangCommandLineReference.html
             output_file = compile_action.arguments[i+1]
             break
-        elif arg.startswith('/Fo') or arg.startswith('-Fo'): # MSVC *and clang*. MSVC docs https://docs.microsoft.com/en-us/cpp/build/reference/compiler-options-listed-alphabetically?view=msvc-170
+        elif arg.startswith('/Fo') or arg.startswith('-Fo'): # MSVC *and clang*. MSVC docs https://docs.microsoft.com/en-us/cpp/build/reference/compiler-options-listed-alphabetically
             output_file = arg[3:]
             break
         elif arg.startswith('--output='):
@@ -626,9 +626,9 @@ def _get_files(compile_action):
     # https://github.com/clangd/clangd/issues/1263
     if (any(header_file.endswith('.h') for header_file in header_files)
         and not source_file.endswith(_get_files.c_source_extensions)
-        and not any(arg.startswith('-x') or arg.startswith('--language') or arg.lower() in ('-objc', '-objc++', '/TC', '/TP') for arg in compile_action.arguments)):
+        and not any(arg.startswith('-x') or arg.startswith('--language') or arg.lower() in ('-objc', '-objc++', '/tc', '/tp') for arg in compile_action.arguments)):
         if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
-            lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type?view=msvc-170
+            lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type
         else:
             lang_flag = _get_files.extensions_to_language_args[os.path.splitext(source_file)[1]]
         # Insert at front of (non executable) args, because --language is only supposed to take effect on files listed thereafter
