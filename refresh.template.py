@@ -958,7 +958,7 @@ def _get_commands(target: str, flags: str):
         file_path = file_flags[0]
         found = False
         target_statment_canidates = []
-        if file_flags[0].endswith(_get_files.source_extensions):
+        if file_path.endswith(_get_files.source_extensions):
             target_statment_canidates.append(f"inputs('{re.escape(file_path)}', {target_statment})")
         else:
             fname = os.path.basename(file_path)
