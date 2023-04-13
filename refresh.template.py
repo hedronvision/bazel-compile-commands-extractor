@@ -996,6 +996,7 @@ def _ensure_gitignore_entries_exist():
     # IMO tools should to do this more broadly, especially now that git is so dominant.
     # Hidden gitignore documented in https://git-scm.com/docs/gitignore
     git_dir = pathlib.Path(git_dir_process.stdout.rstrip())
+    (git_dir / 'info').mkdir(exist_ok=True) # Some older git versions don't auto create .git/info/, creating an error on exclude file open. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/114 for more context. We'll create the .git/info/ if needed; the git docs don't guarantee its existance. (We could instead back to writing .gitignore in the repo and bazel workspace, but we don't because this case is rare and because future git versions would be within their rights to read .git/info/exclude but not auto-create .git/info/)
     hidden_gitignore_path = git_dir / 'info' / 'exclude'
 
     # Get path to the workspace root (current working directory) from the git repository root
