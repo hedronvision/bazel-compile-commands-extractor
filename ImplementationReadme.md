@@ -29,7 +29,7 @@ You should then be able to make local changes and see their effects immediately.
 
 To edit this repository happily, you'll likely want to turn on word wrap in your editor. For example, in VSCode, Settings>Editor: Word Wrap>on (or bounded).
 
-We use some fairly long lines and don't hard wrap at e.g. 80ch. The philosophy is that that these days, we're all trying to make the most of variable-width windows rather than the fixed-width terminals/punchcards of yore (punchcards being the origin of the 80ch convention!).
+We use some fairly long lines and don't hard wrap at e.g. 80ch. The philosophy is that that these days, we're all trying to make the most of variable-width windows rather than the fixed-width terminals/punch cards of yore (punch cards being the origin of the 80ch convention!).
 
 We'd appreciate your joining us in aiming for clarity and ease of expression--by using line breaks to separate ideas--but not to manually reimplement word wrapping.
 
