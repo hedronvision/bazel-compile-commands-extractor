@@ -50,7 +50,7 @@ refresh_compile_commands(
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
     # That's still not enough; I'm working on a huge codebase!
-        # This tool supports a fast, incremental mode that can be used to add/update commands as individual files are opened. If you'd be willing to collaborate on writing a simple editor plugin invokes this tool on file open, please write in! (And see --file flag in refresh.template.py)
+        # This tool supports a fast, incremental mode that can be used to add/update commands as individual files are opened. Let's work together to get it integrated into editors, invoking this tool on file open. Please file an issue to let us know about your interest--or willingness to help (https://github.com/hedronvision/bazel-compile-commands-extractor/issues/new)! (See also: --file flag in refresh.template.py)
 ```
 """
 
