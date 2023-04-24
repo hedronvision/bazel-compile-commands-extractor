@@ -1128,9 +1128,9 @@ if __name__ == '__main__':
         compile_command_entries.extend(_get_commands(target, flags))
 
     if not compile_command_entries:
-        log_error(""">>> Not (over)writing compile_commands.json, since no commands were extracted and an empty file is of no use.
-    There should be actionable warnings, above, that led to this.""")
+        log_error(">>> Not writing to compile_commands.json, since no commands were extracted.")
         sys.exit(1)
+
     # --file triggers incremental update of compile_commands.json
     if any(arg.startswith('--file=') for arg in sys.argv[1:]) and os.path.isfile('compile_commands.json'):
         previous_compile_command_entries = []
@@ -1143,7 +1143,6 @@ if __name__ == '__main__':
             updated_files = set(entry['file'] for entry in compile_command_entries)
             compile_command_entries += [entry for entry in previous_compile_command_entries if entry['file'] not in updated_files]
 
-    # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:
         json.dump(
             compile_command_entries,
