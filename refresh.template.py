@@ -34,10 +34,10 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
-import threading
 
 
 @enum.unique
