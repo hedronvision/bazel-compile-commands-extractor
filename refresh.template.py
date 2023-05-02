@@ -584,7 +584,12 @@ def _get_headers(compile_action, source_path: str):
     if output_file and should_cache:
         os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
         with open(cache_file_path, 'w') as cache_file:
-            json.dump((compile_action.actionKey, list(headers)), cache_file)
+            cache = (compile_action.actionKey, list(headers))
+            try:
+                from orjson import dumps
+                cache_file.write(dumps(cache))
+            except ImportError:
+                json.dump(cache, cache_file)
     elif not headers and cached_headers: # If we failed to get headers, we'll fall back on a stale cache.
         headers = set(cached_headers)
 
@@ -592,8 +597,18 @@ def _get_headers(compile_action, source_path: str):
         headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
 
     return headers
+
 _get_headers.has_logged = False
 
+def _cache_compile_action(compile_action, cache_file_path, headers):
+    cache = (compile_action.actionKey, list(headers))
+    try:
+        from orjson import dumps
+        with open(cache_file_path, 'wb') as cache_file:
+            cache_file.write(dumps(cache))
+    except ImportError:
+        with open(cache_file_path, 'w') as cache_file:
+            json.dump(cache, cache_file)
 
 def _get_files(compile_action):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
