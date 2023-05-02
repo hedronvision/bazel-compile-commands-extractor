@@ -183,7 +183,6 @@ def _get_cached_adjusted_modified_time(path: str):
 # Roughly 1 year into the future. This is safely below bazel's 10 year margin, but large enough that no sane normal file should be past this.
 BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365
 
-BAZEL_INTERNAL_MAX_HEADER_SEARCH_COUNT = 500
 
 def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
@@ -464,7 +463,7 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
     return True
 
 
-def _get_headers(compile_action, source_path: str):
+def _get_headers(compile_action, source_path: str, found_header_focused_upon: threading.Event, focused_on_file: str = None):
     """Gets the headers used by a particular compile command.
 
     Relatively slow. Requires running the C preprocessor.
@@ -560,7 +559,7 @@ def _get_headers(compile_action, source_path: str):
 _get_headers.has_logged = False
 
 
-def _get_files(compile_action):
+def _get_files(compile_action, found_header_focused_upon: threading.Event, focused_on_file: str = None):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
 
     # Getting the source file is a little trickier than it might seem.
@@ -620,7 +619,7 @@ def _get_files(compile_action):
     if os.path.splitext(source_file)[1] in _get_files.assembly_source_extensions:
         return {source_file}, set()
 
-    header_files = _get_headers(compile_action, source_file)
+    header_files = _get_headers(compile_action, source_file, found_header_focused_upon, focused_on_file)
 
     # Ambiguous .h headers need a language specified if they aren't C, or clangd sometimes makes mistakes
     # Delete this and unused extension variables when clangd >= 16 is released, since their underlying issues are resolved at HEAD
@@ -768,28 +767,22 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _get_cpp_command_for_files(args):
+def _get_cpp_command_for_files(compile_action, found_header_focused_upon: threading.Event, focused_on_file: str = None):
     """Reformat compile_action into a compile command clangd can understand.
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
-    (compile_action, event, should_stop_lambda) = args
-    if event.is_set():
-        return set(), set(), []
-
     # Patch command by platform
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
-    source_files, header_files = _get_files(compile_action)
+    source_files, header_files = _get_files(compile_action, found_header_focused_upon, focused_on_file)
 
-    if not event.is_set() and should_stop_lambda(source_files, header_files):
-        event.set()
     return source_files, header_files, compile_action.arguments
 
 
-def _convert_compile_commands(aquery_output, should_stop_lambda):
+def _convert_compile_commands(aquery_output, focused_on_file: str = None):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
@@ -813,8 +806,24 @@ def _convert_compile_commands(aquery_output, should_stop_lambda):
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        event = threading.Event()
-        outputs = threadpool.map(_get_cpp_command_for_files, map(lambda action: (action, event, should_stop_lambda), aquery_output.actions))
+        found_header_focused_upon = threading.Event()  # MIN_PY=3.9: Consider replacing with threadpool.shutdown(cancel_futures=True), possibly also eliminating threading import
+        output_iterator = threadpool.map(
+            lambda compile_action: _get_cpp_command_for_files(compile_action, found_header_focused_upon, focused_on_file), # Binding along side inputs
+            aquery_output.actions,
+            timeout=3 if focused_on_file else None  # If running in fast, interactive mode with --file, we need to cap latency.
+        )
+    # Collect outputs, tolerating any timeouts
+    outputs = []
+    try:
+        for output in output_iterator:
+            outputs.append(output)
+    except concurrent.futures.TimeoutError:
+        assert focused_on_file, "Timeout should only have been set in the fast, interactive --file mode, focused on a single file."
+        if not found_header_focused_upon.is_set():
+            log_warning(f""">>> Timed out looking for a command for {focused_on_file}
+    If that's a source file, please report this. We should work to improve the performance.
+    If that's a header file, we should probably do the same, but it may be unavoidable.""")
+
     # Yield as compile_commands.json entries
     header_files_already_written = set()
     for source_files, header_files, compile_command_args in outputs:
@@ -839,89 +848,79 @@ def _convert_compile_commands(aquery_output, should_stop_lambda):
             }
 
 
+def _get_compile_commands_for_aquery(aquery_target_statement: str, additional_aquery_flags: typing.List[str], focused_on_file: str = None):
+    """Return compile_commands.json entries for a given aquery invocation and file focus."""
+    aquery_args = [
+        'bazel',
+        'aquery',
+        # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
+        # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
+        # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
+        f"mnemonic('(Objc|Cpp)Compile', {aquery_target_statement})",
+        # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
+        '--output=jsonproto',
+        # We'll disable artifact output for efficiency, since it's large and we don't use them. Small win timewise, but dramatically less json output from aquery.
+        '--include_artifacts=false',
+        # Shush logging. Just for readability.
+        '--ui_event_filters=-info',
+        '--noshow_progress',
+        # Disable param files, which would obscure compile actions
+        # Mostly, people enable param files on Windows to avoid the relatively short command length limit.
+            # For more, see compiler_param_file in https://bazel.build/docs/windows
+            # They are, however, technically supported on other platforms/compilers.
+        # That's all well and good, but param files would prevent us from seeing compile actions before the param files had been generated by compilation.
+        # Since clangd has no such length limit, we'll disable param files for our aquery run.
+        '--features=-compiler_param_file',
+        # Disable layering_check during, because it causes large-scale dependence on generated module map files that prevent header extraction before their generation
+            # For more context, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/83
+            # If https://github.com/clangd/clangd/issues/123 is resolved and we're not doing header extraction, we could try removing this, checking that there aren't erroneous red squigglies squigglies before the module maps are generated.
+            # If Bazel starts supporting modules (https://github.com/bazelbuild/bazel/issues/4005), we'll probably need to make changes that subsume this.
+        '--features=-layering_check',
+    ] + additional_aquery_flags
+
+    aquery_process = subprocess.run(
+        aquery_args,
+        # MIN_PY=3.7: Replace PIPEs with capture_output.
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding=locale.getpreferredencoding(),
+        check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
+    )
+
+
+    # Filter aquery error messages to just those the user should care about.
+    # Shush known warnings about missing graph targets.
+    # The missing graph targets are not things we want to introspect anyway.
+    # Tracking issue https://github.com/bazelbuild/bazel/issues/13007
+    missing_targets_warning: typing.Pattern[str] = re.compile(r'(\(\d+:\d+:\d+\) )?(\033\[[\d;]+m)?WARNING: (\033\[[\d;]+m)?Targets were missing from graph:') # Regex handles --show_timestamps and --color=yes. Could use "in" if we ever need more flexibility.
+    aquery_process.stderr = '\n'.join(line for line in aquery_process.stderr.splitlines() if not missing_targets_warning.match(line))
+    if aquery_process.stderr: print(aquery_process.stderr, file=sys.stderr)
+
+    # Parse proto output from aquery
+    try:
+        # object_hook -> SimpleNamespace allows object.member syntax, like a proto, while avoiding the protobuf dependency
+        parsed_aquery_output = json.loads(aquery_process.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
+    except json.JSONDecodeError:
+        print("Bazel aquery failed. Command:", aquery_args, file=sys.stderr)
+        log_warning(f">>> Failed extracting commands for {target}\n    Continuing gracefully...")
+        return []
+
+    if not getattr(parsed_aquery_output, 'actions', None): # Unifies cases: No actions (or actions list is empty)
+        # TODO other stderr & focused on file intersection
+        if aquery_process.stderr:
+            log_warning(f""">>> Bazel lists no applicable compile commands for {target}, probably because of errors in your BUILD files, printed above.
+    Continuing gracefully...""")
+        elif not focused_on_file:
+            log_warning(f""">>> Bazel lists no applicable compile commands for {target}
+    If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
+    Continuing gracefully...""")
+        return []
+
+    return _convert_compile_commands(parsed_aquery_output, focused_on_file)
+
+
 def _get_commands(target: str, flags: str):
     """Return compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
-    lock = threading.RLock()
-    counter = itertools.count()
-    def _should_stop(headers, file_path):
-        if file_path:
-            with lock:
-                tried_count = next(counter)
-            if tried_count >= BAZEL_INTERNAL_MAX_HEADER_SEARCH_COUNT:
-                log_warning(f""">>> Bazel lists no applicable compile commands for {file_path} in {target} under {tried_count} Attempt.""")
-                return True
-            return any(header.endswith(file_path) for header in headers)
-        return False
-
-    def _get_commands(target_statment, file_path):
-        aquery_args = [
-            'bazel',
-            'aquery',
-            # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
-            # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
-            # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
-            f"mnemonic('(Objc|Cpp)Compile', {target_statment})",
-            # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
-            '--output=jsonproto',
-            # We'll disable artifact output for efficiency, since it's large and we don't use them. Small win timewise, but dramatically less json output from aquery.
-            '--include_artifacts=false',
-            # Shush logging. Just for readability.
-            '--ui_event_filters=-info',
-            '--noshow_progress',
-            # Disable param files, which would obscure compile actions
-            # Mostly, people enable param files on Windows to avoid the relatively short command length limit.
-                # For more, see compiler_param_file in https://bazel.build/docs/windows
-                # They are, however, technically supported on other platforms/compilers.
-            # That's all well and good, but param files would prevent us from seeing compile actions before the param files had been generated by compilation.
-            # Since clangd has no such length limit, we'll disable param files for our aquery run.
-            '--features=-compiler_param_file',
-            # Disable layering_check during, because it causes large-scale dependence on generated module map files that prevent header extraction before their generation
-                # For more context, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/83
-                # If https://github.com/clangd/clangd/issues/123 is resolved and we're not doing header extraction, we could try removing this, checking that there aren't erroneous red squigglies squigglies before the module maps are generated.
-                # If Bazel starts supporting modules (https://github.com/bazelbuild/bazel/issues/4005), we'll probably need to make changes that subsume this.
-            '--features=-layering_check',
-        ] + additional_flags
-
-        aquery_process = subprocess.run(
-            aquery_args,
-            # MIN_PY=3.7: Replace PIPEs with capture_output.
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            encoding=locale.getpreferredencoding(),
-            check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
-        )
-
-
-        # Filter aquery error messages to just those the user should care about.
-        # Shush known warnings about missing graph targets.
-        # The missing graph targets are not things we want to introspect anyway.
-        # Tracking issue https://github.com/bazelbuild/bazel/issues/13007
-        missing_targets_warning: typing.Pattern[str] = re.compile(r'(\(\d+:\d+:\d+\) )?(\033\[[\d;]+m)?WARNING: (\033\[[\d;]+m)?Targets were missing from graph:') # Regex handles --show_timestamps and --color=yes. Could use "in" if we ever need more flexibility.
-        aquery_process.stderr = '\n'.join(line for line in aquery_process.stderr.splitlines() if not missing_targets_warning.match(line))
-        if aquery_process.stderr: print(aquery_process.stderr, file=sys.stderr)
-
-        # Parse proto output from aquery
-        try:
-            # object_hook -> SimpleNamespace allows object.member syntax, like a proto, while avoiding the protobuf dependency
-            parsed_aquery_output = json.loads(aquery_process.stdout, object_hook=lambda d: types.SimpleNamespace(**d))
-        except json.JSONDecodeError:
-            print("Bazel aquery failed. Command:", aquery_args, file=sys.stderr)
-            log_warning(f">>> Failed extracting commands for {target}\n    Continuing gracefully...")
-            return []
-
-        if not getattr(parsed_aquery_output, 'actions', None): # Unifies cases: No actions (or actions list is empty)
-            if aquery_process.stderr:
-                log_warning(f""">>> Bazel lists no applicable compile commands for {target}, probably because of errors in your BUILD files, printed above.
-        Continuing gracefully...""")
-            else:
-                log_warning(f""">>> Bazel lists no applicable compile commands for {target}
-        If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
-        Continuing gracefully...""")
-            return []
-
-        return _convert_compile_commands(parsed_aquery_output, lambda _, headers: _should_stop(headers, file_path))
-
-    # Log clear completion messages
     log_info(f">>> Analyzing commands used in {target}")
 
     # Pass along all arguments to aquery, except for --file=
