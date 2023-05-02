@@ -463,6 +463,19 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
     return True
 
 
+def _filter_through_headers(headers: set, found_header_focused_upon: threading.Event, focused_on_file: str = None):
+    """Call me before returning a set of headers from _get_headers().
+    
+    Either checks to see if the header being focused on with --file has been found or excludes external headers, if appropriate.
+    """
+    if focused_on_file:
+        if focused_on_file in headers:
+            found_header_focused_upon.set()
+    elif {exclude_headers} == "external":
+        headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
+    return headers
+
+
 def _get_headers(compile_action, source_path: str, found_header_focused_upon: threading.Event, focused_on_file: str = None):
     """Gets the headers used by a particular compile command.
 
@@ -474,7 +487,14 @@ def _get_headers(compile_action, source_path: str, found_header_focused_upon: th
     # As an alternative approach, you might consider trying to get the headers by inspecting the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
-    if {exclude_headers} == "all":
+    # First, check to see if there's a reason we shouldn't be running this relatively expensive header search
+    if focused_on_file:
+        # No need to get headers if we're focused on a source file.
+        # Do not un-nest; if we're explicitly told to focus on a header, we shouldn't exclude headers. 
+        # OR We've already found what we were looking for! -> Don't do unnecessary, time consuming work.
+        if focused_on_file.endswith(_get_files.source_extensions) or found_header_focused_upon.is_set():
+            return set()
+    elif {exclude_headers} == "all":
         return set()
     elif {exclude_headers} == "external" and not {exclude_external_sources} and compile_action.is_external:
         # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
@@ -528,7 +548,7 @@ def _get_headers(compile_action, source_path: str, found_header_focused_upon: th
                 if (action_key == compile_action.actionKey
                     and _get_cached_adjusted_modified_time(source_path) <= cache_last_modified
                     and all(_get_cached_adjusted_modified_time(header_path) <= cache_last_modified for header_path in headers)):
-                    return set(headers)
+                    return _filter_through_headers(set(headers), found_header_focused_upon, focused_on_file)
 
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers = _get_headers_msvc(compile_action.arguments, source_path)
@@ -552,10 +572,7 @@ def _get_headers(compile_action, source_path: str, found_header_focused_upon: th
         with open(cache_file_path, 'w') as cache_file:
             json.dump((compile_action.actionKey, list(headers)), cache_file)
 
-    if {exclude_headers} == "external":
-        headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
-
-    return headers
+    return _filter_through_headers(headers, found_header_focused_upon, focused_on_file)
 _get_headers.has_logged = False
 
 
@@ -793,7 +810,7 @@ def _convert_compile_commands(aquery_output, focused_on_file: str = None):
     """
 
     # Tag actions as external if we're going to need to know that later.
-    if {exclude_headers} == "external" and not {exclude_external_sources}:
+    if not focused_on_file and {exclude_headers} == "external" and not {exclude_external_sources}:
         targets_by_id = {target.id : target.label for target in aquery_output.targets}
         for action in aquery_output.actions:
             # Tag action as external if it's created by an external target
