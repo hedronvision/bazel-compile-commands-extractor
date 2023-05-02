@@ -479,7 +479,7 @@ def _get_headers(compile_action, source_path: str):
         return set()
     elif {exclude_headers} == "external" and not {exclude_external_sources} and compile_action.is_external:
         # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
-        # The `not {exclude_external_sources}`` clause makes sure is_external was precomputed; there are no external actions if they've already been filtered in the process of excluding external sources.
+        # The `not exclude_external_sources` clause makes sure is_external was precomputed; there are no external actions if they've already been filtered in the process of excluding external sources.
         return set()
 
     output_file = None
