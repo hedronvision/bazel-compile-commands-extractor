@@ -923,7 +923,8 @@ def _get_compile_commands_for_aquery(aquery_target_statement: str, additional_aq
         return []
 
     if not getattr(parsed_aquery_output, 'actions', None): # Unifies cases: No actions (or actions list is empty)
-        # TODO other stderr & focused on file intersection
+        # TODO other stderr
+        # TODO simplify/unify logic around warning about not being able to find commands.
         if aquery_process.stderr:
             log_warning(f""">>> Bazel lists no applicable compile commands for {target}, probably because of errors in your BUILD files, printed above.
     Continuing gracefully...""")
@@ -969,46 +970,43 @@ def _get_commands(target: str, flags: str):
     Try adding them as flags in your refresh_compile_commands rather than targets.
     In a moment, Bazel will likely fail to parse.""")
 
-    compile_commands = []
-    # First, query Bazel's C-family compile actions for that configured target
-    target_statment = f'deps({target})'
 
+    # Then, actually query Bazel's compile actions for that configured target
+    target_statement = f'deps({target})'
+    compile_commands = [] # TODO simplify loop? Move messages outside. TODO fallback in other dimentsion
     if file_flags:
         file_path = file_flags[0]
         found = False
-        target_statment_canidates = []
+        target_statement_canidates = []
         if file_path.endswith(_get_files.source_extensions):
-            target_statment_canidates.append(f"inputs('{re.escape(file_path)}', {target_statment})")
+            target_statement_canidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
         else:
-            fname = os.path.basename(file_path)
-            target_statment_canidates.extend([
-                f"let v = {target_statment} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)",
-                f"inputs('{re.escape(file_path)}', {target_statment})",
+            fname = os.path.basename(file_path) # TODO query to be more specific. Outputs function
+            target_statement_canidates.extend([
+                f"let v = {target_statement} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)",
+                f"inputs('{re.escape(file_path)}', {target_statement})", # TODO doesn't actually work because it doesn't pick up transitive dependencies.
                 f'deps({target})',
-            ])
+            ]) # TODO check sort--and filter to files that depend on this
 
-        for target_statment in target_statment_canidates:
-            commands = _get_commands(target_statment, file_path)
-            # Prevent waste and return them
-            compile_commands.extend(commands)
+        for target_statement in target_statement_canidates:
+            commands = list(_get_compile_commands_for_aquery(target_statement, additional_flags, file_path))
+            compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
             if any(command['file'].endswith(file_path) for command in commands):
                 found = True
                 break
         if not found:
-            log_warning(f""">>> Bazel lists no applicable compile commands for {file_path} in {target}.
-        Continuing gracefully...""")
+            log_warning(f""">>> Couldn't quickly find a compile command for {file_path} in {target}
+    Continuing gracefully...""") # TODO simplify/unify logic around warning about not being able to find commands.
     else:
         if {exclude_external_sources}:
             # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
-            target_statment = f"filter('^(//|@//)',{target_statment})"
-        compile_commands.extend(_get_commands(target_statment, None))
-        if len(compile_commands) == 0:
+            target_statement = f"filter('^(//|@//)',{target_statement})"
+        compile_commands.extend(_get_compile_commands_for_aquery(target_statement, additional_flags))
+        if not compile_commands:
             log_warning(f""">>> Bazel lists no applicable compile commands for {target}
-        If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
-        Continuing gracefully...""")
+    If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
+    Continuing gracefully...""") # TODO simplify/unify logic around warning about not being able to find commands.
 
-
-    # Log clear completion messages
     log_success(f">>> Finished extracting commands for {target}")
     return compile_commands
 
