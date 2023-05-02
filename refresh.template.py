@@ -465,7 +465,7 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
 
 def _filter_through_headers(headers: set, found_header_focused_upon: threading.Event, focused_on_file: str = None):
     """Call me before returning a set of headers from _get_headers().
-    
+
     Either checks to see if the header being focused on with --file has been found or excludes external headers, if appropriate.
     """
     if focused_on_file:
@@ -490,7 +490,7 @@ def _get_headers(compile_action, source_path: str, found_header_focused_upon: th
     # First, check to see if there's a reason we shouldn't be running this relatively expensive header search
     if focused_on_file:
         # No need to get headers if we're focused on a source file.
-        # Do not un-nest; if we're explicitly told to focus on a header, we shouldn't exclude headers. 
+        # Do not un-nest; if we're explicitly told to focus on a header, we shouldn't exclude headers.
         # OR We've already found what we were looking for! -> Don't do unnecessary, time consuming work.
         if focused_on_file.endswith(_get_files.source_extensions) or found_header_focused_upon.is_set():
             return set()
