@@ -940,7 +940,7 @@ def _get_commands(target: str, flags: str):
     """Return compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
     log_info(f">>> Analyzing commands used in {target}")
 
-    # Pass along all arguments to aquery, except for --file=
+    # Parse the --file= flag, if any, passing along all other arguments to aquery
     additional_flags = shlex.split(flags) + [arg for arg in sys.argv[1:] if not arg.startswith('--file=')]
     file_flags = [arg[len('--file='):] for arg in sys.argv[1:] if arg.startswith('--file=')]
     if len(file_flags) > 1:
@@ -950,9 +950,12 @@ def _get_commands(target: str, flags: str):
         log_error(">>> Only the --file=<file_target> form is supported.")
         sys.exit(1)
 
+
+    # Screen the remaining flags for obvious issues to help people debug.
+
     # Detect anything that looks like a build target in the flags, and issue a warning.
     # Note that positional arguments after -- are all interpreted as target patterns.
-    # And that we have to look for targets. checking for a - prefix is not enough. Consider the case of `-c opt` leading to a false positive
+    # And that we have to look for targets. Checking for a - prefix is not enough. Consider the case of `-c opt`, leading to a false positive.
     if ('--' in additional_flags
         or any(re.match(r'-?(@|:|//)', f) for f in additional_flags)):
         log_warning(""">>> The flags you passed seem to contain targets.
