@@ -543,7 +543,11 @@ def _get_headers(compile_action, source_path: str):
             cache_last_modified = os.path.getmtime(cache_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
             try:
                 with open(cache_file_path) as cache_file:
-                    action_key, cached_headers = json.load(cache_file)
+                    try:
+                        from orjson import loads
+                        action_key, cached_headers = loads(cache_file.read())
+                    except ImportError:
+                        action_key, cached_headers = json.load(cache_file)
             except json.JSONDecodeError:
                 # Corrupted cache, which can happen if, for example, the user kills the program, since writes aren't atomic.
                 # But if it is the result of a bug, we want to print it before it's overwritten, so it can be reported
