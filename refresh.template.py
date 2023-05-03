@@ -982,9 +982,10 @@ def _get_commands(target: str, flags: str):
             target_statement_canidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
         else:
             fname = os.path.basename(file_path) # TODO query to be more specific. Outputs function
+            header_target_statement = f"let v = {target_statement} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)"
             target_statement_canidates.extend([
-                f"let v = {target_statement} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)",
-                f"inputs('{re.escape(file_path)}', {target_statement})", # TODO doesn't actually work because it doesn't pick up transitive dependencies.
+                header_target_statement,
+                f"allpaths({target}, {header_target_statement})",
                 f'deps({target})',
             ]) # TODO check sort--and filter to files that depend on this
 
