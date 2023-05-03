@@ -988,7 +988,7 @@ def _get_commands(target: str, flags: str):
             target_statement_canidates.extend([
                 header_target_statement,
                 f"allpaths({target}, {header_target_statement})",
-                f'deps({target})', # TODO: Let's detect out-of-bazel paths and only run this if and only if we're looking for a system header.  
+                f'deps({target})', # TODO: Let's detect out-of-bazel paths and only run this if and only if we're looking for a system header.
             ]) # TODO check sort--and filter to files that depend on this
 
         for target_statement in target_statement_canidates:
