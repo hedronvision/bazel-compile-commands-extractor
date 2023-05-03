@@ -444,6 +444,8 @@ def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
 def _file_is_in_main_workspace_and_not_external(file_str: str):
     file_path = pathlib.PurePath(file_str)
     if file_path.is_absolute():
+        # MSVC emits absolute paths for all headers, so we need to the case where there are absolute paths into the workspace
+        # TODO be careful about this case with --file
         workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
         if not _is_relative_to(file_path, workspace_absolute):
             return False
@@ -973,7 +975,7 @@ def _get_commands(target: str, flags: str):
 
     # Then, actually query Bazel's compile actions for that configured target
     target_statement = f'deps({target})'
-    compile_commands = [] # TODO simplify loop? Move messages outside. TODO fallback in other dimentsion
+    compile_commands = [] # TODO simplify loop? Move messages outside.
     if file_flags:
         file_path = file_flags[0]
         found = False
@@ -986,7 +988,7 @@ def _get_commands(target: str, flags: str):
             target_statement_canidates.extend([
                 header_target_statement,
                 f"allpaths({target}, {header_target_statement})",
-                f'deps({target})',
+                f'deps({target})', # TODO: Let's detect out-of-bazel paths and only run this if and only if we're looking for a system header.  
             ]) # TODO check sort--and filter to files that depend on this
 
         for target_statement in target_statement_canidates:
@@ -1135,6 +1137,7 @@ if __name__ == '__main__':
     _ensure_gitignore_entries_exist()
     _ensure_external_workspaces_link_exists()
 
+    # TODO for --file, don't continue traversing targets after the first command has been found
     target_flag_pairs = [
         # Begin: template filled by Bazel
         {target_flag_pairs}
