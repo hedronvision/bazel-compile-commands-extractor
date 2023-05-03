@@ -987,10 +987,9 @@ def _get_commands(target: str, flags: str):
             header_target_statement = f"let v = {target_statement} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)"
             target_statement_candidates.extend([
                 header_target_statement,
-                f"allpaths({target}, {header_target_statement})",
+                f"allpaths({target}, {header_target_statement})",  # Ordering is correct. TODO needs --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289
                 f'deps({target})', # TODO: Let's detect out-of-bazel paths and only run this if and only if we're looking for a system header.
             ]) # TODO check sort--and filter to files that depend on this
-
         for target_statement in target_statement_candidates:
             commands = list(_get_compile_commands_for_aquery(target_statement, additional_flags, file_path))
             compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
