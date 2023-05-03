@@ -979,19 +979,19 @@ def _get_commands(target: str, flags: str):
     if file_flags:
         file_path = file_flags[0]
         found = False
-        target_statement_canidates = []
+        target_statement_candidates = []
         if file_path.endswith(_get_files.source_extensions):
-            target_statement_canidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
+            target_statement_candidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
         else:
             fname = os.path.basename(file_path) # TODO query to be more specific. Outputs function
             header_target_statement = f"let v = {target_statement} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)"
-            target_statement_canidates.extend([
+            target_statement_candidates.extend([
                 header_target_statement,
                 f"allpaths({target}, {header_target_statement})",
                 f'deps({target})', # TODO: Let's detect out-of-bazel paths and only run this if and only if we're looking for a system header.
             ]) # TODO check sort--and filter to files that depend on this
 
-        for target_statement in target_statement_canidates:
+        for target_statement in target_statement_candidates:
             commands = list(_get_compile_commands_for_aquery(target_statement, additional_flags, file_path))
             compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
             if any(command['file'].endswith(file_path) for command in commands):
