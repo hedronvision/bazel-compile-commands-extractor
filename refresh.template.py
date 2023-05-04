@@ -471,8 +471,13 @@ def _filter_through_headers(headers: set, found_header_focused_upon: threading.E
     Either checks to see if the header being focused on with --file has been found or excludes external headers, if appropriate.
     """
     if focused_on_file:
+        # TODO full paths on windows--maybe easier to normalize them to relative, above.
+        # TODO discuss the below.
+        # If we're focusing on a header, we return just that header. Why? Only source files are useful for background indexing, since they include headers, and we'll already save the work for header finding in our internal caches.
         if focused_on_file in headers:
             found_header_focused_upon.set()
+            return {focused_on_file}
+        return set()
     elif {exclude_headers} == "external":
         headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
     return headers
