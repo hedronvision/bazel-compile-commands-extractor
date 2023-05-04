@@ -979,7 +979,7 @@ def _get_commands(target: str, flags: str):
 
 
     # Then, actually query Bazel's compile actions for that configured target
-    target_statement = f'deps({target})' # TODO we should always be quoting targets when we splice them in. Let's use single quotes like with mnemonic, above. See slightly down in https://bazel.build/query/language#tokens 
+    target_statement = f'deps({target})' # TODO we should always be quoting targets when we splice them in. Let's use single quotes like with mnemonic, above. See slightly down in https://bazel.build/query/language#tokens
     compile_commands = [] # TODO simplify loop, especially if we can reduce it to one command per case (see below)? Move warning messages outside?
     if file_flags:
         file_path = file_flags[0]
