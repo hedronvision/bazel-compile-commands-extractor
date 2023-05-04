@@ -444,7 +444,7 @@ def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
 def _file_is_in_main_workspace_and_not_external(file_str: str):
     file_path = pathlib.PurePath(file_str)
     if file_path.is_absolute():
-        # MSVC emits absolute paths for all headers, so we need to the case where there are absolute paths into the workspace
+        # MSVC emits absolute paths for all headers, so we need to handle the case where there are absolute paths into the workspace
         # TODO be careful about this case with --file
         workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
         if not _is_relative_to(file_path, workspace_absolute):
@@ -471,7 +471,7 @@ def _filter_through_headers(headers: set, found_header_focused_upon: threading.E
     Either checks to see if the header being focused on with --file has been found or excludes external headers, if appropriate.
     """
     if focused_on_file:
-        # TODO full paths on windows--maybe easier to normalize them to relative, above.
+        # TODO full paths on windows--maybe easier to normalize them to relative upon generation, above.
         # TODO discuss the below.
         # If we're focusing on a header, we return just that header. Why? Only source files are useful for background indexing, since they include headers, and we'll already save the work for header finding in our internal caches.
         if focused_on_file in headers:
@@ -834,7 +834,7 @@ def _convert_compile_commands(aquery_output, focused_on_file: str = None):
         output_iterator = threadpool.map(
             lambda compile_action: _get_cpp_command_for_files(compile_action, found_header_focused_upon, focused_on_file), # Binding along side inputs
             aquery_output.actions,
-            timeout=3 if focused_on_file else None  # If running in fast, interactive mode with --file, we need to cap latency.
+            timeout=3 if focused_on_file else None  # If running in fast, interactive mode with --file, we need to cap latency. #TODO test timeout--if it doesn't work, cap input length here, before passing in array. Might also want to divide timeout/cap by #targets
         )
     # Collect outputs, tolerating any timeouts
     outputs = []
@@ -862,7 +862,7 @@ def _convert_compile_commands(aquery_output, focused_on_file: str = None):
 
         for file in itertools.chain(source_files, header_files_not_already_written):
             if file == 'external/bazel_tools/src/tools/launcher/dummy.cc': continue # Suppress Bazel internal files leaking through. Hopefully will prevent issues like https://github.com/hedronvision/bazel-compile-commands-extractor/issues/77
-            yield {
+            yield { # TODO for consistency, let's have this return a list if its parent is returning a list. That'd also let us strip the list() cast in the found = True block, below
                 # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
                 'file': file,
                 # Using `arguments' instead of 'command' because it's now preferred by clangd. Heads also that shlex.join doesn't work for windows cmd, so you'd need to use windows_list2cmdline if we ever switched back. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
@@ -930,7 +930,7 @@ def _get_compile_commands_for_aquery(aquery_target_statement: str, additional_aq
         return []
 
     if not getattr(parsed_aquery_output, 'actions', None): # Unifies cases: No actions (or actions list is empty)
-        # TODO other stderr
+        # TODO the  different flags warning in stderr is common enough that we might want to either filter it or adjust this messaging.
         # TODO simplify/unify logic around warning about not being able to find commands.
         if aquery_process.stderr:
             log_warning(f""">>> Bazel lists no applicable compile commands for {target}, probably because of errors in your BUILD files, printed above.
@@ -980,7 +980,7 @@ def _get_commands(target: str, flags: str):
 
     # Then, actually query Bazel's compile actions for that configured target
     target_statement = f'deps({target})'
-    compile_commands = [] # TODO simplify loop? Move messages outside.
+    compile_commands = [] # TODO simplify loop, especially if we can reduce it to one command per case (see below)? Move messages outside?
     if file_flags:
         file_path = file_flags[0]
         found = False
@@ -988,13 +988,13 @@ def _get_commands(target: str, flags: str):
         if file_path.endswith(_get_files.source_extensions):
             target_statement_candidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
         else:
-            fname = os.path.basename(file_path) # TODO query to be more specific. Outputs function
+            fname = os.path.basename(file_path) # TODO consider running a  preliminary aquery to make this more specific, getting the targets that generate the given file? Use outputs aquery function. Should also test the case where the file is generated/is coming in as a filegroup.
             header_target_statement = f"let v = {target_statement} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)"
             target_statement_candidates.extend([
                 header_target_statement,
-                f"allpaths({target}, {header_target_statement})",  # Ordering is correct. TODO needs --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289
-                f'deps({target})', # TODO: Let's detect out-of-bazel paths and only run this if and only if we're looking for a system header.
-            ]) # TODO check sort--and filter to files that depend on this
+                f"allpaths({target}, {header_target_statement})",  # Ordering is ideal, breadth first from the deepest dependency, despite the docs. TODO There's a bazel bug that produces extra actions, not on the path but downstream, so we probably want to pass --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289 to eliminate them (at the cost of some valid aspects). We might also also want to *just* run this query, not the whole list, since it captures the former and is therfore unlikely to add much latency, since a given header is probabably either used internally to the target (find on first match) for header-only (must traverse all paths in all targets until you get a match) for all top-level targets.
+                f'deps({target})', # TODO: Let's detect out-of-bazel paths and  run this if and only if we're looking for a system header.
+            ])
         for target_statement in target_statement_candidates:
             commands = list(_get_compile_commands_for_aquery(target_statement, additional_flags, file_path))
             compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
@@ -1141,7 +1141,7 @@ if __name__ == '__main__':
     _ensure_gitignore_entries_exist()
     _ensure_external_workspaces_link_exists()
 
-    # TODO for --file, don't continue traversing targets after the first command has been found
+    # TODO for --file, don't continue traversing targets after the first command has been found. Probably push this looping and template expansion inside of _get_commands().
     target_flag_pairs = [
         # Begin: template filled by Bazel
         {target_flag_pairs}
