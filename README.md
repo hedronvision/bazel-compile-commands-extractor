@@ -99,9 +99,9 @@ Note: the extra `--` is not a typo, and functions to pass the flags to this tool
 
 `bazel run @hedron_compile_commands//:refresh_all -- --config=my_important_flags_or_toolchains --compilation_mode=dbg`
 
-##### 3. Often, though, you'll want to specify the output targets you care about and/or what flags they individually need. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. An example of the latter is an android_library, which probably cannot be built independently of the android_binary that configures it.
+##### 3. Often, though, you'll want to specify the top-level, output targets you care about and/or what flags they individually need. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. An example of the latter is an android_library, which probably cannot be built independently of the android_binary that configures it.
 
-In that case, you can easily specify the top-level output targets you're working on and the flags needed to build them.
+In that case, you can easily specify the top-level, output targets you're working on and the flags needed to build them.
 
 Open a `BUILD` file—we'd recommend using (or creating) `//BUILD`—and add something like:
 
