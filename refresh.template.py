@@ -997,8 +997,13 @@ def _get_commands(target: str, flags: str):
         if file_path.endswith(_get_files.source_extensions):
             target_statement_candidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
         else:
-            fname = os.path.basename(file_path) # TODO consider running a  preliminary aquery to make this more specific, getting the targets that generate the given file. Use outputs() aquery function. Should also test the case where the file is generated/is coming in as a filegroup--that's likely to be fixed by this change.
-            header_target_statement = f"let v = {target_statement} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)" # Bazel does not list headers as direct inputs, but rather hides them behind "middlemen", necessitating a query like this.
+            fname = os.path.basename(file_path)
+            label_candidates = subprocess.check_output(['bazel', 'query', f"filter('{fname}$', {target_statement})"], stderr = subprocess.PIPE, text = True).split()
+            # TODO compatible with windows file path
+            file_candidates = list(filter(lambda label: file_path in label.replace(':', '/'), label_candidates))
+            file_statement = '|'.join(file_candidates) if len(file_candidates) > 0 else fname
+
+            header_target_statement = f"let v = {target_statement} in attr(hdrs, '{file_statement}', $v) + attr(srcs, '{file_statement}', $v)" # Bazel does not list headers as direct inputs, but rather hides them behind "middlemen", necessitating a query like this.
             target_statement_candidates.extend([
                 header_target_statement,
                 f"allpaths({target}, {header_target_statement})",  # Ordering is ideal, breadth-first from the deepest dependency, despite the docs. TODO (1) There's a bazel bug that produces extra actions, not on the path but downstream, so we probably want to pass --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289 to eliminate them (at the cost of some valid aspects). (2) We might want to benchmark with --infer_universe_scope (if supported) and --universe-scope=target with query allrdeps({header_target_statement}, <maybe some limited depth>) or rdeps, checking speed but also ordering (the docs indicate it is likely to be lost, which is a problem) and for inclusion of the header target. We'd guess it'll have the same aspects bug as allpaths. (3) We probably also also want to *just* run this query, not the whole list, since it captures the former and is therefore unlikely to add much latency, since a given header is probabably either used internally to the target (find on first match) for header-only (must traverse all paths in all targets until you get a match) for all top-level targets, and since we can separate out the last, see below.
