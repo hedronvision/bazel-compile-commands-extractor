@@ -831,11 +831,20 @@ def _convert_compile_commands(aquery_output, focused_on_file: str = None):
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
         found_header_focused_upon = threading.Event()  # MIN_PY=3.9: Consider replacing with threadpool.shutdown(cancel_futures=True), possibly also eliminating threading import
+        timeout = 3
+        measure_action_count = len(aquery_output.actions) if not focused_on_file else 100
+        measure_start_time = time.time()
         output_iterator = threadpool.map(
             lambda compile_action: _get_cpp_command_for_files(compile_action, found_header_focused_upon, focused_on_file), # Binding along side inputs
-            aquery_output.actions,
-            timeout=3 if focused_on_file else None  # If running in fast, interactive mode with --file, we need to cap latency. #TODO test timeout--if it doesn't work, cap input length here, before passing in array. Might also want to divide timeout/cap by #targets
+            aquery_output.actions[:measure_action_count]
         )
+        cost_time = time.time() - measure_start_time
+        if focused_on_file and cost_time < timeout:
+            estimate_action_count = min(int((timeout - cost_time) / cost_time * measure_action_count), 5000)
+            output_iterator = itertools.chain(output_iterator, threadpool.map(
+                lambda compile_action: _get_cpp_command_for_files(compile_action, found_header_focused_upon, focused_on_file), # Binding along side inputs
+                aquery_output.actions[measure_action_count:measure_action_count + estimate_action_count]
+            ))
     # Collect outputs, tolerating any timeouts
     outputs = []
     try:
