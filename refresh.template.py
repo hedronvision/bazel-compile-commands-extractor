@@ -939,14 +939,8 @@ def _get_compile_commands_for_aquery(aquery_target_statement: str, additional_aq
         return []
 
     if not getattr(parsed_aquery_output, 'actions', None): # Unifies cases: No actions (or actions list is empty)
-        # TODO the  different flags warning in stderr is common enough that we might want to either filter it or adjust this messaging.
-        # TODO simplify/unify logic around warning about not being able to find commands.
         if aquery_process.stderr:
             log_warning(f""">>> Bazel lists no applicable compile commands for {target}, probably because of errors in your BUILD files, printed above.
-    Continuing gracefully...""")
-        elif not focused_on_file:
-            log_warning(f""">>> Bazel lists no applicable compile commands for {target}
-    If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
     Continuing gracefully...""")
         return []
 
@@ -988,12 +982,13 @@ def _get_commands(target: str, flags: str):
 
 
     # Then, actually query Bazel's compile actions for that configured target
-    target_statement = f"deps('{target}')"
-    compile_commands = [] # TODO simplify loop, especially if we can reduce it to one command per case (see below)? Move warning messages outside?
+    target_statement_candidates = []
+    file_path = None
+    compile_commands = []
+
     if file_flags:
         file_path = file_flags[0]
-        found = False
-        target_statement_candidates = []
+        target_statement = f"deps('{target}')"
         if file_path.endswith(_get_files.source_extensions):
             target_statement_candidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
         else:
@@ -1009,24 +1004,30 @@ def _get_commands(target: str, flags: str):
                 f"allpaths({target}, {header_target_statement})",  # Ordering is ideal, breadth-first from the deepest dependency, despite the docs. TODO (1) There's a bazel bug that produces extra actions, not on the path but downstream, so we probably want to pass --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289 to eliminate them (at the cost of some valid aspects). (2) We might want to benchmark with --infer_universe_scope (if supported) and --universe-scope=target with query allrdeps({header_target_statement}, <maybe some limited depth>) or rdeps, checking speed but also ordering (the docs indicate it is likely to be lost, which is a problem) and for inclusion of the header target. We'd guess it'll have the same aspects bug as allpaths. (3) We probably also also want to *just* run this query, not the whole list, since it captures the former and is therefore unlikely to add much latency, since a given header is probabably either used internally to the target (find on first match) for header-only (must traverse all paths in all targets until you get a match) for all top-level targets, and since we can separate out the last, see below.
                 f'deps({target})', # TODO: Let's detect out-of-bazel, absolute  paths and run this if and only if we're looking for a system header. We need to think about how we want to handle absolute paths more generally, perhaps normalizing them to relative if possible, like with the windows absolute path issue, above.
             ])
-        for target_statement in target_statement_candidates:
-            commands = list(_get_compile_commands_for_aquery(target_statement, additional_flags, file_path))
-            compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
-            if any(command['file'].endswith(file_path) for command in commands):
-                found = True
-                break
-        if not found:
-            log_warning(f""">>> Couldn't quickly find a compile command for {file_path} in {target}
-    Continuing gracefully...""") # TODO simplify/unify logic around warning about not being able to find commands.
     else:
         if {exclude_external_sources}:
             # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
-            target_statement = f"filter('^(//|@//)',{target_statement})"
-        compile_commands.extend(_get_compile_commands_for_aquery(target_statement, additional_flags))
-        if not compile_commands:
-            log_warning(f""">>> Bazel lists no applicable compile commands for {target}
+            target_statement_candidates.append(f"filter('^(//|@//)',{target_statement})")
+
+    found = False
+    for target_statement in target_statement_candidates:
+        commands = list(_get_compile_commands_for_aquery(target_statement, additional_flags, file_path))
+        compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
+        if file_flags:
+            if any(command['file'].endswith(file_path) for command in commands):
+                found = True
+                break
+            log_info(f""">>> Couldn't quickly find a compile command for {file_path} in {target} under {target_statement}
+    Continuing gracefully...""")
+
+    if file_flags and not found:
+        log_warning(f""">>> Couldn't quickly find a compile command for {file_path} in {target}
+    Continuing gracefully...""")
+
+    if not compile_commands:
+        log_warning(f""">>> Bazel lists no applicable compile commands for {target}
     If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
-    Continuing gracefully...""") # TODO simplify/unify logic around warning about not being able to find commands.
+    Continuing gracefully...""")
 
     log_success(f">>> Finished extracting commands for {target}")
     return compile_commands
