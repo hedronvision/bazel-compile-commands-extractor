@@ -810,7 +810,7 @@ def _convert_compile_commands(aquery_output, focused_on_file: str = None):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
-    Returns: Corresponding entries for a compile_commands.json, with commas after each entry, describing all ways every file is being compiled.
+    Yields: Corresponding entries for a compile_commands.json, with commas after each entry, describing all ways every file is being compiled.
         Also includes one entry per header, describing one way it is compiled (to work around https://github.com/clangd/clangd/issues/123).
 
     Crucially, this de-Bazels the compile commands it takes as input, leaving something clangd can understand. The result is a command that could be run from the workspace root directly, with no bazel-specific environment variables, etc.
@@ -857,8 +857,7 @@ def _convert_compile_commands(aquery_output, focused_on_file: str = None):
     If that's a source file, please report this. We should work to improve the performance.
     If that's a header file, we should probably do the same, but it may be unavoidable.""")
 
-    # Return as compile_commands.json entries
-    output_list = []
+    # Yield as compile_commands.json entries
     header_files_already_written = set()
     for source_files, header_files, compile_command_args in outputs:
         # Only emit one entry per header
@@ -872,8 +871,14 @@ def _convert_compile_commands(aquery_output, focused_on_file: str = None):
 
         for file in itertools.chain(source_files, header_files_not_already_written):
             if file == 'external/bazel_tools/src/tools/launcher/dummy.cc': continue # Suppress Bazel internal files leaking through. Hopefully will prevent issues like https://github.com/hedronvision/bazel-compile-commands-extractor/issues/77
-            output_list.append(types.SimpleNamespace(file=file, arguments=compile_command_args, directory=os.environ["BUILD_WORKSPACE_DIRECTORY"]))
-    return output_list
+            yield { # TODO for consistency, let's have this return a list if its parent is returning a list. That'd also let us strip the list() cast in the found = True block, below
+                # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
+                'file': file,
+                # Using `arguments' instead of 'command' because it's now preferred by clangd. Heads also that shlex.join doesn't work for windows cmd, so you'd need to use windows_list2cmdline if we ever switched back. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
+                'arguments': compile_command_args,
+                # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
+                'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
+            }
 
 
 def _get_compile_commands_for_aquery(aquery_target_statement: str, additional_aquery_flags: typing.List[str], focused_on_file: str = None):
@@ -1006,10 +1011,10 @@ def _get_commands(target: str, flags: str):
 
     found = False
     for target_statement in target_statement_candidates:
-        commands = _get_compile_commands_for_aquery(target_statement, additional_flags, file_path)
+        commands = list(_get_compile_commands_for_aquery(target_statement, additional_flags, file_path))
         compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
         if file_flags:
-            if any(command.file.endswith(file_path) for command in commands):
+            if any(command['file'].endswith(file_path) for command in commands):
                 found = True
                 break
             log_info(f""">>> Couldn't quickly find a compile command for {file_path} in {target} under {target_statement}
@@ -1171,16 +1176,16 @@ if __name__ == '__main__':
         previous_compile_command_entries = []
         try:
             with open('compile_commands.json') as compile_commands_file:
-                previous_compile_command_entries = [types.SimpleNamespace(**d) for d in json.load(compile_commands_file)]
+                previous_compile_command_entries = json.load(compile_commands_file)
         except:
             log_warning(">>> Couldn't read previous compile_commands.json. Overwriting instead of merging...")
         else:
-            updated_files = set(entry.file for entry in compile_command_entries)
-            compile_command_entries += [entry for entry in previous_compile_command_entries if entry.file not in updated_files]
+            updated_files = set(entry['file'] for entry in compile_command_entries)
+            compile_command_entries += [entry for entry in previous_compile_command_entries if entry['file'] not in updated_files]
 
     with open('compile_commands.json', 'w') as output_file:
         json.dump(
-            [vars(entry) for entry in compile_command_entries],
+            compile_command_entries,
             output_file,
             indent=2, # Yay, human readability!
             check_circular=False # For speed.
