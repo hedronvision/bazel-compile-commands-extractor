@@ -983,11 +983,6 @@ def _get_commands(target: str, flags: str):
 
     if file_flags:
         file_path = file_flags[0]
-        rel_path = os.path.relpath(file_path, os.getcwd())
-        if not rel_path.startswith(".."):
-            log_info(f">>> Detected file path {file_path} is relative path changed to {rel_path}")
-            file_path = rel_path
-
         target_statement = f"deps('{target}')"
         if file_path.endswith(_get_files.source_extensions):
             target_statement_candidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
@@ -1002,7 +997,7 @@ def _get_commands(target: str, flags: str):
             target_statement_candidates.extend([
                 header_target_statement,
                 f"allpaths({target}, {header_target_statement})",  # Ordering is ideal, breadth-first from the deepest dependency, despite the docs. TODO (1) There's a bazel bug that produces extra actions, not on the path but downstream, so we probably want to pass --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289 to eliminate them (at the cost of some valid aspects). (2) We might want to benchmark with --infer_universe_scope (if supported) and --universe-scope=target with query allrdeps({header_target_statement}, <maybe some limited depth>) or rdeps, checking speed but also ordering (the docs indicate it is likely to be lost, which is a problem) and for inclusion of the header target. We'd guess it'll have the same aspects bug as allpaths. (3) We probably also also want to *just* run this query, not the whole list, since it captures the former and is therefore unlikely to add much latency, since a given header is probabably either used internally to the target (find on first match) for header-only (must traverse all paths in all targets until you get a match) for all top-level targets, and since we can separate out the last, see below.
-                target_statement,
+                f'deps({target})', # TODO: Let's detect out-of-bazel, absolute  paths and run this if and only if we're looking for a system header. We need to think about how we want to handle absolute paths more generally, perhaps normalizing them to relative if possible, like with the windows absolute path issue, above.
             ])
     else:
         if {exclude_external_sources}:
