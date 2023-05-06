@@ -942,104 +942,95 @@ def _get_compile_commands_for_aquery(aquery_target_statement: str, additional_aq
     return _convert_compile_commands(parsed_aquery_output, focused_on_file)
 
 
-def _get_commands(pairs: list):
-    """Return compile_commands.json entries for a given list of target and flags, gracefully tolerating errors."""
+def _get_commands(target: str, flags: str):
+    """Return compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
+    log_info(f">>> Analyzing commands used in {target}")
 
-    all_compile_commands = []
-
-    for target, flags in pairs:
-        log_info(f">>> Analyzing commands used in {target}")
-        # Parse the --file= flag, if any, passing along all other arguments to aquery
-        additional_flags = shlex.split(flags) + [arg for arg in sys.argv[1:] if not arg.startswith('--file=')]
-        file_flags = [arg[len('--file='):] for arg in sys.argv[1:] if arg.startswith('--file=')]
-        if len(file_flags) > 1:
-            log_error(">>> At most one --file flag is supported.")
-            sys.exit(1)
-        if any(arg.startswith('--file') for arg in additional_flags):
-            log_error(">>> Only the --file=<file_target> form is supported.")
-            sys.exit(1)
+    # Parse the --file= flag, if any, passing along all other arguments to aquery
+    additional_flags = shlex.split(flags) + [arg for arg in sys.argv[1:] if not arg.startswith('--file=')]
+    file_flags = [arg[len('--file='):] for arg in sys.argv[1:] if arg.startswith('--file=')]
+    if len(file_flags) > 1:
+        log_error(">>> At most one --file flag is supported.")
+        sys.exit(1)
+    if any(arg.startswith('--file') for arg in additional_flags):
+        log_error(">>> Only the --file=<file_target> form is supported.")
+        sys.exit(1)
 
 
-        # Screen the remaining flags for obvious issues to help people debug.
+    # Screen the remaining flags for obvious issues to help people debug.
 
-        # Detect anything that looks like a build target in the flags, and issue a warning.
-        # Note that positional arguments after -- are all interpreted as target patterns.
-        # And that we have to look for targets. Checking for a - prefix is not enough. Consider the case of `-c opt`, leading to a false positive.
-        if ('--' in additional_flags
-            or any(re.match(r'-?(@|:|//)', f) for f in additional_flags)):
-            log_warning(""">>> The flags you passed seem to contain targets.
-        Try adding them as targets in your refresh_compile_commands rather than flags.
-        [Specifying targets at runtime isn't supported yet, and in a moment, Bazel will likely fail to parse without our help. If you need to be able to specify targets at runtime, and can't easily just add them to your refresh_compile_commands, please open an issue or file a PR. You may also want to refer to https://github.com/hedronvision/bazel-compile-commands-extractor/issues/62.]""")
+    # Detect anything that looks like a build target in the flags, and issue a warning.
+    # Note that positional arguments after -- are all interpreted as target patterns.
+    # And that we have to look for targets. Checking for a - prefix is not enough. Consider the case of `-c opt`, leading to a false positive.
+    if ('--' in additional_flags
+        or any(re.match(r'-?(@|:|//)', f) for f in additional_flags)):
+        log_warning(""">>> The flags you passed seem to contain targets.
+    Try adding them as targets in your refresh_compile_commands rather than flags.
+    [Specifying targets at runtime isn't supported yet, and in a moment, Bazel will likely fail to parse without our help. If you need to be able to specify targets at runtime, and can't easily just add them to your refresh_compile_commands, please open an issue or file a PR. You may also want to refer to https://github.com/hedronvision/bazel-compile-commands-extractor/issues/62.]""")
 
-        # Quick (imperfect) effort at detecting flags in the targets.
-        # Can't detect flags starting with -, because they could be subtraction patterns.
-        if any(target.startswith('--') for target in shlex.split(target)):
-            log_warning(""">>> The target you specified seems to contain flags.
-        Try adding them as flags in your refresh_compile_commands rather than targets.
-        In a moment, Bazel will likely fail to parse.""")
+    # Quick (imperfect) effort at detecting flags in the targets.
+    # Can't detect flags starting with -, because they could be subtraction patterns.
+    if any(target.startswith('--') for target in shlex.split(target)):
+        log_warning(""">>> The target you specified seems to contain flags.
+    Try adding them as flags in your refresh_compile_commands rather than targets.
+    In a moment, Bazel will likely fail to parse.""")
 
 
-        # Then, actually query Bazel's compile actions for that configured target
-        target_statement_candidates = []
-        file_path = None
+    # Then, actually query Bazel's compile actions for that configured target
+    target_statement_candidates = []
+    file_path = None
+    compile_commands = []
 
-        if file_flags:
-            file_path = file_flags[0]
-            rel_path = os.path.relpath(file_path, os.getcwd())
-            if not rel_path.startswith(".."):
-                log_info(f">>> Detected file path {file_path} is relative path changed to {rel_path}")
-                file_path = rel_path
+    if file_flags:
+        file_path = file_flags[0]
+        rel_path = os.path.relpath(file_path, os.getcwd())
+        if not rel_path.startswith(".."):
+            log_info(f">>> Detected file path {file_path} is relative path changed to {rel_path}")
+            file_path = rel_path
 
-            target_statement = f"deps('{target}')"
-            if file_path.endswith(_get_files.source_extensions):
-                target_statement_candidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
-            else:
-                fname = os.path.basename(file_path)
-                label_candidates = subprocess.check_output(['bazel', 'query', f"filter('{fname}$', {target_statement})"], stderr = subprocess.PIPE, text = True).split()
-                # TODO compatible with windows file path
-                file_candidates = list(filter(lambda label: file_path in label.replace(':', '/'), label_candidates))
-                file_statement = '|'.join(file_candidates) if len(file_candidates) > 0 else fname
-
-                header_target_statement = f"let v = {target_statement} in attr(hdrs, '{file_statement}', $v) + attr(srcs, '{file_statement}', $v)" # Bazel does not list headers as direct inputs, but rather hides them behind "middlemen", necessitating a query like this.
-                target_statement_candidates.extend([
-                    header_target_statement,
-                    f"allpaths({target}, {header_target_statement})",  # Ordering is ideal, breadth-first from the deepest dependency, despite the docs. TODO (1) There's a bazel bug that produces extra actions, not on the path but downstream, so we probably want to pass --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289 to eliminate them (at the cost of some valid aspects). (2) We might want to benchmark with --infer_universe_scope (if supported) and --universe-scope=target with query allrdeps({header_target_statement}, <maybe some limited depth>) or rdeps, checking speed but also ordering (the docs indicate it is likely to be lost, which is a problem) and for inclusion of the header target. We'd guess it'll have the same aspects bug as allpaths. (3) We probably also also want to *just* run this query, not the whole list, since it captures the former and is therefore unlikely to add much latency, since a given header is probabably either used internally to the target (find on first match) for header-only (must traverse all paths in all targets until you get a match) for all top-level targets, and since we can separate out the last, see below.
-                    target_statement,
-                ])
+        target_statement = f"deps('{target}')"
+        if file_path.endswith(_get_files.source_extensions):
+            target_statement_candidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
         else:
-            if {exclude_external_sources}:
-                # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
-                target_statement_candidates.append(f"filter('^(//|@//)',{target_statement})")
+            fname = os.path.basename(file_path)
+            label_candidates = subprocess.check_output(['bazel', 'query', f"filter('{fname}$', {target_statement})"], stderr = subprocess.PIPE, text = True).split()
+            # TODO compatible with windows file path
+            file_candidates = list(filter(lambda label: file_path in label.replace(':', '/'), label_candidates))
+            file_statement = '|'.join(file_candidates) if len(file_candidates) > 0 else fname
 
-        found = False
-        compile_commands = []
-        for target_statement in target_statement_candidates:
-            commands = _get_compile_commands_for_aquery(target_statement, additional_flags, file_path)
-            compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
-            if file_flags:
-                if any(command.file.endswith(file_path) for command in commands):
-                    found = True
-                    break
-                log_info(f""">>> Couldn't quickly find a compile command for {file_path} in {target} under {target_statement}
-        Continuing gracefully...""")
+            header_target_statement = f"let v = {target_statement} in attr(hdrs, '{file_statement}', $v) + attr(srcs, '{file_statement}', $v)" # Bazel does not list headers as direct inputs, but rather hides them behind "middlemen", necessitating a query like this.
+            target_statement_candidates.extend([
+                header_target_statement,
+                f"allpaths({target}, {header_target_statement})",  # Ordering is ideal, breadth-first from the deepest dependency, despite the docs. TODO (1) There's a bazel bug that produces extra actions, not on the path but downstream, so we probably want to pass --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289 to eliminate them (at the cost of some valid aspects). (2) We might want to benchmark with --infer_universe_scope (if supported) and --universe-scope=target with query allrdeps({header_target_statement}, <maybe some limited depth>) or rdeps, checking speed but also ordering (the docs indicate it is likely to be lost, which is a problem) and for inclusion of the header target. We'd guess it'll have the same aspects bug as allpaths. (3) We probably also also want to *just* run this query, not the whole list, since it captures the former and is therefore unlikely to add much latency, since a given header is probabably either used internally to the target (find on first match) for header-only (must traverse all paths in all targets until you get a match) for all top-level targets, and since we can separate out the last, see below.
+                target_statement,
+            ])
+    else:
+        if {exclude_external_sources}:
+            # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
+            target_statement_candidates.append(f"filter('^(//|@//)',{target_statement})")
 
-        all_compile_commands.extend(compile_commands)
-
+    found = False
+    for target_statement in target_statement_candidates:
+        commands = _get_compile_commands_for_aquery(target_statement, additional_flags, file_path)
+        compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
         if file_flags:
-            if found:
-                log_success(f">>> Finished extracting commands for {target} with --file {file_path}")
+            if any(command.file.endswith(file_path) for command in commands):
+                found = True
                 break
-            else:
-                log_warning(f""">>> Couldn't quickly find a compile command for {file_path} in {target}
-        Continuing gracefully...""")
+            log_info(f""">>> Couldn't quickly find a compile command for {file_path} in {target} under {target_statement}
+    Continuing gracefully...""")
 
-        if not compile_commands:
-            log_warning(f""">>> Bazel lists no applicable compile commands for {target}
-        If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
-        Continuing gracefully...""")
+    if file_flags and not found:
+        log_warning(f""">>> Couldn't quickly find a compile command for {file_path} in {target}
+    Continuing gracefully...""")
 
-        log_success(f">>> Finished extracting commands for {target}")
-    return all_compile_commands
+    if not compile_commands:
+        log_warning(f""">>> Bazel lists no applicable compile commands for {target}
+    If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
+    Continuing gracefully...""")
+
+    log_success(f">>> Finished extracting commands for {target}")
+    return compile_commands
 
 
 def _ensure_external_workspaces_link_exists():
@@ -1165,13 +1156,16 @@ if __name__ == '__main__':
     _ensure_gitignore_entries_exist()
     _ensure_external_workspaces_link_exists()
 
+    # TODO for --file, don't continue traversing targets after the first command has been found. Probably push this looping and template expansion inside of _get_commands().
     target_flag_pairs = [
         # Begin: template filled by Bazel
         {target_flag_pairs}
         # End:   template filled by Bazel
     ]
 
-    compile_command_entries = _get_commands(target_flag_pairs)
+    compile_command_entries = []
+    for (target, flags) in target_flag_pairs:
+        compile_command_entries.extend(_get_commands(target, flags))
 
     if not compile_command_entries:
         log_error(">>> Not writing to compile_commands.json, since no commands were extracted.")
