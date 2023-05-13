@@ -52,7 +52,7 @@ The `refresh_compile_commands` rule (from [`refresh_compile_commands.bzl`](./ref
 
 - [`refresh.template.py`](./refresh.template.py) is the main driver of actions. Browsing it should help you figure out where you want to go. It consists of two sections: one for calling `bazel aquery` and one for constructing the `compile_commands.json` from it. The latter does the actual reformatting of command so they're usable by `clangd`. This is more involved than you might think, but not crazy. It's easy to extend the reformatting operations applied.
   - If you're seeing failures on a new platform, weird entries in `compile_commands.json`, or wrapped compilers, this is where you should make changes to properly undo Bazel's wrapping of the command. See the "Patch command by platform" section.
-- The bazel files ([`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl) and others) are just wrappings. They're less likely to require your attention.
+- The other files ([`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl) and others) are just wrappings. They're less likely to require your attention, except as directed from the README or refresh.template.py.
 
 
 ## Tool Choice — Why `clangd`?

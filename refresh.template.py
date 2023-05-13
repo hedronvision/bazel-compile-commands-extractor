@@ -10,14 +10,13 @@ Interface (after template expansion):
     - Crucially, this output is de-Bazeled; The result is a command that could be run from the workspace root directly, with no Bazel-specific requirements, environment variables, etc.
 """
 
-import sys
-if sys.version_info < (3,6):
-    sys.exit("\n\033[31mFATAL ERROR:\033[0m Python 3.6 or later is required. Please update!")
-    # 3.6 backwards compatibility required by @zhanyong-wan in https://github.com/hedronvision/bazel-compile-commands-extractor/issues/111.
-    # 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27.
-    # ^ Try to contact before upgrading.
-    # When adding things could be cleaner if we had a higher minimum version, please add a comment with MIN_PY=3.<v>.
-    # Similarly, when upgrading, please search for that MIN_PY= tag.
+
+# This file requires python 3.6, which is enforced by check_python_version.template.py
+# 3.6 backwards compatibility required by @zhanyong-wan in https://github.com/hedronvision/bazel-compile-commands-extractor/issues/111.
+# 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27.
+# ^ Try to contact before upgrading.
+# When adding things could be cleaner if we had a higher minimum version, please add a comment with MIN_PY=3.<v>.
+# Similarly, when upgrading, please search for that MIN_PY= tag.
 
 
 import concurrent.futures
@@ -32,6 +31,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import types
@@ -1049,7 +1049,7 @@ def _ensure_cwd_is_workspace_root():
     os.chdir(workspace_root)
 
 
-if __name__ == '__main__':
+def main():
     _ensure_cwd_is_workspace_root()
     _ensure_gitignore_entries_exist()
     _ensure_external_workspaces_link_exists()
