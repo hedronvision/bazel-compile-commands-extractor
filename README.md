@@ -143,6 +143,18 @@ For now, we'd suggest continuing on to set up `clangd` (below). Thereafter, if y
 
 Please upgrade or add `# gazelle:exclude external` to the BUILD file in your workspace root. Gazelle had some problematic symlink handling in those versions that we fixed for them with a PR. (Conversely, if, at the time you're reading this, Gazelle v0.29 (January 2023) is so old that few would be using it, please file a quick PR to remove this section.)
 
+### Customizing the `compile_commands.json` generation
+
+The tool has a few parameters that control output generation:
+
+* `--bcce-color[=`_no_`]`           A boolean flag that enables or disables colored output. This is useful for environments where the color codes are not handled (e.g. VSCode output window).
+* `--bcce-compiler=[`_compiler_`]`  Allows to override the detected compiler. This is helpful if the compiler found in the editor environment is different from the compiler that should be used for `compile_commands.json`.
+* `--bcce-copt=[`_option_`]`        Enables passing additional `option`s to arg lists in  `compile_commands.json` (can be repeated).
+
+Similar to optons passed down to the bazel aquery, these options must be separated by `--`. For instance in order to suppress colored output use:
+
+`bazel run @hedron_compile_commands//:refresh_all -- --bcce-color=no`.
+
 ## Editor Setup — for autocomplete based on `compile_commands.json`
 
 
@@ -182,6 +194,28 @@ You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the 
 #### If you work on your repository with others...
 
 ... and would like these settings to be automatically applied for your teammates, also add the settings to the VSCode *workspace* settings and then check `.vscode/settings.json` into source control.
+
+#### Automating the regeneration of `compile_commands.json`
+
+There are VSCode plugins that allow to run commands whenever a file is being saved. One such extension is [Run on Save from emeraldwalk](https://github.com/emeraldwalk/vscode-runonsave).
+
+After installing the plugin add the following to your user `settings.json` file:
+
+```json
+{
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": "WORKSPACE|BUILD|.*[.]bzl|.*[.]bazel",
+                "isAsync": true,
+                "cmd": "bazel run @hedron_compile_commands//:refresh_all -- --bcce-color=0 --bcce-compiler=$(which clang))"
+            }
+        ]
+    }
+}
+```
+
+The above only triggers on Bazel's `WORKSPACE`, `BUILD` and other bazel files, as changes to the header files or dependencies require a change in those files.
 
 ### Other Editors
 

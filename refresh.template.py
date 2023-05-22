@@ -49,9 +49,45 @@ class SGR(enum.Enum):
     FG_BLUE = '\033[0;34m'
 
 
+@functools.lru_cache(maxsize=None)
+def _non_bcce_args():
+    """Returns `sys.argv[1:]` with all bcce args removed."""
+    return [arg for arg in sys.argv[1:] if not arg.startswith('--bcce-')]
+
+
+@functools.lru_cache(maxsize=None)
+def _get_args(arg_name):
+    """Return all values for `arg_name` in `sys.argv[1:]`."""
+    return [arg.lstrip('--' + arg_name).lstrip('=') for arg in sys.argv[1:] if arg.startswith('--' + arg_name)]
+
+
+@functools.lru_cache(maxsize=None)
+def _get_last_arg(arg_name, default = None):
+    """Get last value for `arg_name` in `sys.argv[1:]`."""
+    args = _get_args(arg_name)
+    return args[-1] if args else default
+
+
+@functools.lru_cache(maxsize=None)
+def _get_bool_arg(arg_name, default):
+    """Get the last value for `arg_name` in `sys.argv[1:]` as boolean or `default` value."""
+    value = _get_last_arg(arg_name)
+    if value in ['', '1', 'yes']:
+        return True
+    if value in ['0', 'no']:
+        return False
+    return default
+
+
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
     """Log a message to stderr wrapped in an SGR context."""
-    print(sgr.value, colored_message, SGR.RESET.value, uncolored_message, sep='', file=sys.stderr, flush=True)
+    if _get_bool_arg('bcce-color', True):
+        sgr_start = sgr.value
+        sgr_reset = SGR.RESET.value
+    else:
+        sgr_start = ''
+        sgr_reset = ''
+    print(sgr_start, colored_message, sgr_reset, uncolored_message, sep='', file=sys.stderr, flush=True)
 
 
 def log_error(colored_message, uncolored_message=''):
@@ -702,6 +738,13 @@ def _get_apple_DEVELOPER_DIR():
     # Traditionally stored in DEVELOPER_DIR environment variable, but not provided by Bazel. See https://github.com/bazelbuild/bazel/issues/12852
 
 
+def _manual_platform_patch(compile_args: typing.List[str]):
+    """Apply manual fixes to the compile args."""
+    compile_args[0] = _get_last_arg('bcce-compiler', compile_args[0])
+    compile_args += _get_args('bcce-copt')
+    return compile_args
+    
+
 def _apple_platform_patch(compile_args: typing.List[str]):
     """De-Bazel the command into something clangd can parse.
 
@@ -773,6 +816,7 @@ def _get_cpp_command_for_files(compile_action):
     # Patch command by platform
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
+    compile_action.arguments = _manual_platform_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(compile_action)
@@ -835,7 +879,7 @@ def _get_commands(target: str, flags: str):
     # Log clear completion messages
     log_info(f">>> Analyzing commands used in {target}")
 
-    additional_flags = shlex.split(flags) + sys.argv[1:]
+    additional_flags = shlex.split(flags) + _non_bcce_args()
 
     # Detect anything that looks like a build target in the flags, and issue a warning.
     # Note that positional arguments after -- are all interpreted as target patterns. (If it's at the end, then no worries.)
