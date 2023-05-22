@@ -743,7 +743,7 @@ def _manual_platform_patch(compile_args: typing.List[str]):
     compile_args[0] = _get_last_arg('bcce-compiler', compile_args[0])
     compile_args += _get_args('bcce-copt')
     return compile_args
-    
+
 
 def _apple_platform_patch(compile_args: typing.List[str]):
     """De-Bazel the command into something clangd can parse.
