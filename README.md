@@ -147,7 +147,7 @@ Please upgrade or add `# gazelle:exclude external` to the BUILD file in your wor
 
 The tool has a few parameters that control output generation:
 
-* `--bcce-color[=`_no_`]`           A boolean flag that enables or disables colored output. This is useful for environments where the color codes are not handled (e.g. VSCode output window).
+* `--bcce-color[=`_no_`]`           A boolean flag that enables or disables colored output. This is useful for environments where the color codes are not handled (e.g. VSCode output window). The flag also suppots the `--nobcce-color` notation.
 * `--bcce-compiler[=`_compiler_`]`  Allows to override the detected compiler. This is helpful if the compiler found in the editor environment is different from the compiler that should be used for `compile_commands.json`.
 * `--bcce-copt[=`_option_`]`        Enables passing additional `option`s to arg lists in  `compile_commands.json` (can be repeated).
 

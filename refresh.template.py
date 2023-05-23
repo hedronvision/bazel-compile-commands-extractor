@@ -52,26 +52,32 @@ class SGR(enum.Enum):
 @functools.lru_cache(maxsize=None)
 def _non_bcce_args():
     """Returns `sys.argv[1:]` with all bcce args removed."""
-    return [arg for arg in sys.argv[1:] if not arg.startswith('--bcce-')]
+    return [arg for arg in sys.argv[1:] if not arg.startswith('--bcce-') and not arg.startswith('--nobcce')]
 
 
 @functools.lru_cache(maxsize=None)
-def _get_args(arg_name):
+def _get_args(arg_name, is_bool=False):
     """Return all values for `arg_name` in `sys.argv[1:]`."""
-    return [arg.lstrip('--' + arg_name).lstrip('=') for arg in sys.argv[1:] if arg.startswith('--' + arg_name)]
+    args = []
+    for arg in sys.argv[1:]:
+        if arg.startswith('--'+arg_name):
+            args.append(arg.lstrip('--' + arg_name).lstrip('='))
+        if is_bool and arg.startswith('--no' + arg_name):
+            args.append('no' + arg.lstrip('--no' + arg_name).lstrip('='))
+    return args
 
 
 @functools.lru_cache(maxsize=None)
-def _get_last_arg(arg_name, default = None):
+def _get_last_arg(arg_name, default = None, is_bool=False):
     """Get last value for `arg_name` in `sys.argv[1:]`."""
-    args = _get_args(arg_name)
+    args = _get_args(arg_name, is_bool)
     return args[-1] if args else default
 
 
 @functools.lru_cache(maxsize=None)
 def _get_bool_arg(arg_name, default):
     """Get the last value for `arg_name` in `sys.argv[1:]` as boolean or `default` value."""
-    value = _get_last_arg(arg_name)
+    value = _get_last_arg(arg_name, is_bool=True)
     if value in ['', '1', 'yes']:
         return True
     if value in ['0', 'no']:
