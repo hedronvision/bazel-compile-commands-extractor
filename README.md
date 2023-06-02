@@ -147,11 +147,12 @@ Please upgrade or add `# gazelle:exclude external` to the BUILD file in your wor
 
 The tool has a few parameters that control output generation:
 
-* `--bcce-color[=`_no_`]`           A boolean flag that enables or disables colored output. This is useful for environments where the color codes are not handled (e.g. VSCode output window). The flag also suppots the `--nobcce-color` notation.
-* `--bcce-compiler[=`_compiler_`]`  Allows to override the detected compiler. This is helpful if the compiler found in the editor environment is different from the compiler that should be used for `compile_commands.json`.
-* `--bcce-copt[=`_option_`]`        Enables passing additional `option`s to arg lists in  `compile_commands.json` (can be repeated).
+* `--bcce-color[=`_auto_`]`           A flag that enables or disables colored output. This is useful for environments where the color codes are not handled (e.g. VSCode OUTPUT window). If the value is `auto` (default), then the environment is checked to determne whetehr colors can be used (both [`NO_COLOR`](https://no-color.org) and `TERM` are checked). To disabe colors the value needs to be `0` or `no`, or the flag specified as `--nobcce-color`. To enable colors the value needs to be `1` or `yes`.
+* `--bcce-compiler[=`_compiler_`]`  Allows to override the detected compiler. This is helpful if the compiler found in the editor environment is different from the compiler that should be used for `compile_commands.json`. Note that this
+may interfere with cross-compilation. If the issue is with `clangd`, then the [clangd compileflags](https://clangd.llvm.org/config#compileflags) can be used so clangd will perform the override for its own use.
+* `--bcce-copt[=`_option_`]`        Enables passing additional `option`s to arg lists in `compile_commands.json` (can be repeated). Similar to the above, compiler options can be added and removed using clangd's compileflags.
 
-Similar to optons passed down to the bazel aquery, these options must be separated by `--`. For instance in order to suppress colored output use:
+Similar to options passed down to `bazel aquery`, these options must be separated by `--`. For instance in order to suppress colored output use:
 
 `bazel run @hedron_compile_commands//:refresh_all -- --bcce-color=no`.
 
@@ -206,9 +207,9 @@ After installing the plugin add the following to your user `settings.json` file:
     "emeraldwalk.runonsave": {
         "commands": [
             {
-                "match": "WORKSPACE|BUILD|.*[.]bzl|.*[.]bazel",
+                "match": "(WORKSPACE|BUILD|.*[.]bzl|.*[.]bazel)$",
                 "isAsync": true,
-                "cmd": "bazel run @hedron_compile_commands//:refresh_all -- --bcce-color=0 --bcce-compiler=$(which clang))"
+                "cmd": "bazel run @hedron_compile_commands//:refresh_all"
             }
         ]
     }

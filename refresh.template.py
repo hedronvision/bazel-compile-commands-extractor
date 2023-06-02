@@ -68,7 +68,7 @@ def _get_args(arg_name, is_bool=False):
 
 
 @functools.lru_cache(maxsize=None)
-def _get_last_arg(arg_name, default = None, is_bool=False):
+def _get_last_arg(arg_name, default=None, is_bool=False):
     """Get last value for `arg_name` in `sys.argv[1:]`."""
     args = _get_args(arg_name, is_bool)
     return args[-1] if args else default
@@ -78,16 +78,63 @@ def _get_last_arg(arg_name, default = None, is_bool=False):
 def _get_bool_arg(arg_name, default):
     """Get the last value for `arg_name` in `sys.argv[1:]` as boolean or `default` value."""
     value = _get_last_arg(arg_name, is_bool=True)
-    if value in ['', '1', 'yes']:
+    if value.lower() in ['', '1', 'yes']:
         return True
-    if value in ['0', 'no']:
+    if value.lower() in ['0', 'no']:
         return False
     return default
 
 
+@enum.unique
+class COLOR_MODE(enum.Enum):
+    COLOR_AUTO = -1
+    COLOR_NO = 0
+    COLOR_YES = 1
+
+
+# Automatically determine whether colors are supported.
+USE_COLOR=COLOR_MODE.COLOR_AUTO
+
+
+def _can_do_color() -> bool:
+    """Check --bcce-color and env vars for color mode."""
+    global USE_COLOR
+    if USE_COLOR == COLOR_MODE.COLOR_NO:
+        return False
+    if USE_COLOR == COLOR_MODE.COLOR_YES:
+        return True
+    
+    if _get_last_arg('bcce-color', default='auto', is_bool=True) != 'auto':
+        if _get_bool_arg('bcce-color', True):
+            USE_COLOR=COLOR_MODE.COLOR_YES
+            return True
+        else:
+            USE_COLOR=COLOR_MODE.COLOR_NO
+            return False
+
+    # Check environment, see https://no-color.org
+    if "NO_COLOR" in os.environ:
+        if os.environ["NO_COLOR"] == "0":
+            USE_COLOR=COLOR_MODE.COLOR_YES
+            return True
+        else:
+            USE_COLOR=COLOR_MODE.COLOR_NO
+            return False
+    if (
+        hasattr(sys.stdout, "isatty")
+        and sys.stdout.isatty()
+        and os.environ.get("TERM") != "dumb"
+    ):
+        USE_COLOR=COLOR_MODE.COLOR_YES
+        return True
+    else:
+        USE_COLOR=COLOR_MODE.COLOR_NO
+        return False
+
+
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
     """Log a message to stderr wrapped in an SGR context."""
-    if _get_bool_arg('bcce-color', True):
+    if _can_do_color():
         sgr_start = sgr.value
         sgr_reset = SGR.RESET.value
     else:
