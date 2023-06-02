@@ -103,7 +103,7 @@ def _can_do_color() -> bool:
         return False
     if USE_COLOR == COLOR_MODE.COLOR_YES:
         return True
-    
+
     if _get_last_arg('bcce-color', default='auto', is_bool=True) != 'auto':
         if _get_bool_arg('bcce-color', True):
             USE_COLOR=COLOR_MODE.COLOR_YES
