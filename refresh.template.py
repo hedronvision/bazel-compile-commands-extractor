@@ -761,12 +761,9 @@ def _all_platform_patch(compile_args: typing.List[str]):
     compile_args = new_compile_args
 
     # Discover compilers that are actually symlinks to ccache--and replace them with the underlying compiler
-    try:
+    if os.path.islink(compile_args[0]):
         compiler_path = os.readlink(compile_args[0])
-    except OSError:
-        pass
-    else:
-        if compiler_path.endswith("ccache"):
+        if os.path.basename(compiler_path) == "ccache":
             compiler = os.path.basename(compile_args[0])
             real_compiler_path = shutil.which(compiler)
             if real_compiler_path:
