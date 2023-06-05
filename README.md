@@ -227,6 +227,22 @@ On the other hand, if you've set things up and they're working well, we'd still 
 
 We'd also love to work with you on contributions and improvements, of course! Development setup is easy, not onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md) The codebase is super clean and friendly. Stepping into the code is a fun and efficient way to get the improvements you want.
 
+### rules_cuda
+
+This should mostly work with [rules_cuda](https://bazel-contrib.github.io/rules_cuda), but clangd will likely complain
+about some unknown flags that are nvcc specific. To work around this, you can use a clangd configuration file like:
+
+```yml
+CompileFlags:
+  # NVCC flags that clang doesn't understand.
+  Remove: [--expt-relaxed-constexpr, --expt-extended-lambda, --extended-lambda, -rdc=*, -ccbin]
+```
+
+Put that file in a file named `.clangd` in root of your repo (or for other possible locations see [clangd docs](https://clangd.llvm.org/config)).
+
+And edit your clangd args to add: `"--enable-config"`.
+
+
 ---
 
 ## Other Projects Likely Of Interest
