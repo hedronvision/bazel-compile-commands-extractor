@@ -181,6 +181,8 @@ def _get_cached_adjusted_modified_time(path: str):
 # Roughly 1 year into the future. This is safely below bazel's 10 year margin, but large enough that no sane normal file should be past this.
 BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365
 
+def _is_nvcc(path: str):
+    return os.path.basename(path).startswith('nvcc')
 
 def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
@@ -229,7 +231,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     # Relies on our having made the workspace directory simulate a complete version of the execroot with //external symlink
     deps_args = ['--dependencies', '--print-missing-file-dependencies']
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#nvcc-command-options
-    if os.path.basename(header_cmd[0]).startswith('nvcc'):
+    if _is_nvcc(header_cmd[0]):
         deps_args = ['--generate-dependencies']
     header_cmd += deps_args
 
@@ -769,6 +771,56 @@ def _all_platform_patch(compile_args: typing.List[str]):
 
     return compile_args
 
+_nvcc_flags_no_arg = (
+    # long name, short name
+    '--expt-relaxed-constexpr', '-expt-relaxed-constexpr',
+    '--expt-extended-lambda', '-expt-extended-lambda',
+    '--extended-lambda', '-extended-lambda',
+)
+_nvcc_flags_with_arg = (
+    # long name, short name
+    '--relocatable-device-code', '-rdc',
+    '--compiler-bindir', '-ccbin',
+    '--compiler-options', '-Xcompiler')
+
+def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
+    """Apply fixes to args to nvcc.
+
+    Basically remove everything that's an nvcc arg that is not also a clang arg.
+
+    This is definitely incomplete. Feel free to add more. Reference:
+    https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#nvcc-command-options
+    """
+    if not _is_nvcc(compile_args[0]):
+        return compile_args
+
+    new_compile_args = [compile_args[0],
+                        # Make clangd's behavior closer to nvcc's.
+                        # I think this might become the default in clangd 17: https://reviews.llvm.org/D151359
+                        '-Xclang', '-fcuda-allow-variadic-functions']
+    skip_next = True # skip the first arg which we added above
+    for arg in compile_args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in _nvcc_flags_no_arg:
+            continue
+        skip = False
+        for flag_with_arg in _nvcc_flags_with_arg:
+            if arg == flag_with_arg:
+                skip = True
+                skip_next = True
+                break
+            with_eq = flag_with_arg + "="
+            if arg.startswith(with_eq):
+                skip = True
+                break
+        if skip:
+            continue
+
+        new_compile_args.append(arg)
+
+    return new_compile_args
 
 def _get_cpp_command_for_files(compile_action):
     """Reformat compile_action into a compile command clangd can understand.
@@ -778,6 +830,7 @@ def _get_cpp_command_for_files(compile_action):
     # Patch command by platform
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
+    compile_action.arguments = _nvcc_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(compile_action)
