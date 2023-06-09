@@ -229,19 +229,7 @@ We'd also love to work with you on contributions and improvements, of course! De
 
 ### rules_cuda
 
-This should mostly work with [rules_cuda](https://bazel-contrib.github.io/rules_cuda), but clangd will likely complain
-about some unknown flags that are nvcc specific. To work around this, you can use a clangd configuration file like:
-
-```yml
-CompileFlags:
-  # NVCC flags that clang doesn't understand.
-  Remove: [--expt-relaxed-constexpr, --expt-extended-lambda, --extended-lambda, -rdc=*, -ccbin]
-```
-
-Put that file in a file named `.clangd` in root of your repo (or for other possible locations see [clangd docs](https://clangd.llvm.org/config)).
-
-And edit your clangd args to add: `"--enable-config"`.
-
+This should mostly work with [rules_cuda](https://bazel-contrib.github.io/rules_cuda) using NVCC, but `clangd` may complain if there is an NVCC flag that is not known to clang and not handled by the compile commands generator. In that case please open a PR to have the generator handle that flag, or you can suppress the error with a clangd config.
 
 ---
 
