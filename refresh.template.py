@@ -771,17 +771,21 @@ def _all_platform_patch(compile_args: typing.List[str]):
 
     return compile_args
 
-_nvcc_flags_no_arg = (
+_nvcc_flags_no_arg = {
     # long name, short name
     '--expt-relaxed-constexpr', '-expt-relaxed-constexpr',
     '--expt-extended-lambda', '-expt-extended-lambda',
-    '--extended-lambda', '-extended-lambda',
-)
+    '--extended-lambda', '-extended-lambda'}
 _nvcc_flags_with_arg = (
     # long name, short name
     '--relocatable-device-code', '-rdc',
     '--compiler-bindir', '-ccbin',
     '--compiler-options', '-Xcompiler')
+_nvcc_rewrite_flags = {
+    # NVCC flag: equiavelent clang flag
+    "--output-file": "-o",
+    "--std": "-std",
+    "--x": "-x"}
 
 def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
     """Apply fixes to args to nvcc.
@@ -798,12 +802,16 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
                         # Make clangd's behavior closer to nvcc's.
                         # I think this might become the default in clangd 17: https://reviews.llvm.org/D151359
                         '-Xclang', '-fcuda-allow-variadic-functions']
-    skip_next = True # skip the first arg which we added above
+    skip_next = True # skip the compile_args[0] which we added above
     for arg in compile_args:
         if skip_next:
             skip_next = False
             continue
         if arg in _nvcc_flags_no_arg:
+            continue
+        rewrite_to = _nvcc_rewrite_flags.get(arg)
+        if rewrite_to:
+            new_compile_args.append(rewrite_to)
             continue
         skip = False
         for flag_with_arg in _nvcc_flags_with_arg:
