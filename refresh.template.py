@@ -226,7 +226,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
 
     # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files
     # Relies on our having made the workspace directory simulate a complete version of the execroot with //external symlink
-    header_cmd = list(header_cmd) + ['--dependencies', '--print-missing-file-dependencies']
+    header_cmd = list(header_cmd) + ['--dependencies', '--print-missing-file-dependencies', '-M']
 
     header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed( # Note: gcc/clang can be run from Windows, too.
         header_cmd,
