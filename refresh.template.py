@@ -771,21 +771,144 @@ def _all_platform_patch(compile_args: typing.List[str]):
 
     return compile_args
 
+# Generated script nvcc_clang_diff.py
 _nvcc_flags_no_arg = {
     # long name, short name
-    '--expt-relaxed-constexpr', '-expt-relaxed-constexpr',
+    '--Wdefault-stream-launch', '-Wdefault-stream-launch',
+    '--Wext-lambda-captures-this', '-Wext-lambda-captures-this',
+    '--Wmissing-launch-bounds', '-Wmissing-launch-bounds',
+    '--Wno-deprecated-gpu-targets', '-Wno-deprecated-gpu-targets',
+    '--allow-unsupported-compiler', '-allow-unsupported-compiler',
+    '--augment-host-linker-script', '-aug-hls',
+    '--clean-targets', '-clean',
+    '--compile-as-tools-patch', '-astoolspatch',
+    '--cubin', '-cubin',
+    '--cuda', '-cuda',
+    '--device-c', '-dc',
+    '--device-link', '-dlink',
+    '--device-w', '-dw',
+    '--display-error-number', '-err-no',
+    '--dlink-time-opt', '-dlto',
+    '--dont-use-profile', '-noprof',
+    '--dryrun', '-dryrun',
     '--expt-extended-lambda', '-expt-extended-lambda',
-    '--extended-lambda', '-extended-lambda'}
-_nvcc_flags_with_arg = (
+    '--expt-relaxed-constexpr', '-expt-relaxed-constexpr',
+    '--extended-lambda', '-extended-lambda',
+    '--extensible-whole-program', '-ewp',
+    '--extra-device-vectorization', '-extra-device-vectorization',
+    '--fatbin', '-fatbin',
+    '--forward-unknown-opts', '-forward-unknown-opts',
+    '--forward-unknown-to-host-compiler', '-forward-unknown-to-host-compiler',
+    '--forward-unknown-to-host-linker', '-forward-unknown-to-host-linker',
+    '--gen-opt-lto', '-gen-opt-lto',
+    '--generate-line-info', '-lineinfo',
+    '--host-relocatable-link', '-r',
+    '--keep', '-keep',
+    '--keep-device-functions', '-keep-device-functions',
+    '--lib', '-lib',
+    '--link', '-link',
+    '--list-gpu-arch', '-arch-ls',
+    '--list-gpu-code', '-code-ls',
+    '--lto', '-lto',
+    '--no-align-double', '--no-align-double',
+    '--no-compress', '-no-compress',
+    '--no-device-link', '-nodlink',
+    '--no-display-error-number', '-no-err-no',
+    '--no-exceptions', '-noeh',
+    '--no-host-device-initializer-list', '-nohdinitlist',
+    '--no-host-device-move-forward', '-nohdmoveforward',
+    '--objdir-as-tempdir', '-objtemp',
+    '--optix-ir', '-optix-ir',
+    '--ptx', '-ptx',
+    '--qpp-config', '-qpp-config',
+    '--resource-usage', '-res-usage',
+    '--restrict', '-restrict',
+    '--run', '-run',
+    '--source-in-ptx', '-src-in-ptx',
+    '--use-local-env', '-use-local-env',
+    '--use_fast_math', '-use_fast_math',
+}
+_nvcc_flags_with_arg = {
     # long name, short name
-    '--relocatable-device-code', '-rdc',
+    '--archive-options', '-Xarchive',
+    '--archiver-binary', '-arbin',
+    '--brief-diagnostics', '-brief-diag',
     '--compiler-bindir', '-ccbin',
-    '--compiler-options', '-Xcompiler')
+    '--compiler-options', '-Xcompiler',
+    '--cudadevrt', '-cudadevrt',
+    '--cudart', '-cudart',
+    '--default-stream', '-default-stream',
+    '--dependency-drive-prefix', '-ddp',
+    '--diag-error', '-diag-error',
+    '--diag-suppress', '-diag-suppress',
+    '--diag-warn', '-diag-warn',
+    '--dopt', '-dopt',
+    '--drive-prefix', '-dp',
+    '--entries', '-e',
+    '--fmad', '-fmad',
+    '--ftemplate-backtrace-limit', '-ftemplate-backtrace-limit',
+    '--ftemplate-depth', '-ftemplate-depth',
+    '--ftz', '-ftz',
+    '--generate-code', '-gencode',
+    '--gpu-code', '-code',
+    '--host-linker-script', '-hls',
+    '--input-drive-prefix', '-idp',
+    '--keep-dir', '-keep-dir',
+    '--libdevice-directory', '-ldir',
+    '--machine', '-m',
+    '--maxrregcount', '-maxrregcount',
+    '--nvlink-options', '-Xnvlink',
+    '--optimization-info', '-opt-info',
+    '--options-file', '-optf',
+    '--output-directory', '-odir',
+    '--prec-div', '-prec-div',
+    '--prec-sqrt', '-prec-sqrt',
+    '--ptxas-options', '-Xptxas',
+    '--relocatable-device-code', '-rdc',
+    '--run-args', '-run-args',
+    '--split-compile', '-split-compile',
+    '--target-directory', '-target-dir',
+    '--threads', '-t',
+    '--version-ident', '-dQ',
+}
 _nvcc_rewrite_flags = {
-    # NVCC flag: equiavelent clang flag
-    "--output-file": "-o",
-    "--std": "-std",
-    "--x": "-x"}
+    # NVCC flag: clang flag
+    '--Werror': '-Werror',
+    '--Wno-deprecated-declarations': '-Wno-deprecated-declarations',
+    '--Wreorder': '-Wreorder',
+    '--compile': '-c',
+    '--debug': '-g',
+    '--define-macro': '-D',
+    '--dependency-output': '-MF',
+    '--dependency-target-name': '-MT',
+    '--device-debug': '-G',
+    '--disable-warnings': '-w',
+    '--generate-dependencies': '-M',
+    '--generate-dependencies-with-compile': '-MD',
+    '--generate-dependency-targets': '-MP',
+    '--generate-nonsystem-dependencies': '-MM',
+    '--generate-nonsystem-dependencies-with-compile': '-MMD',
+    '--gpu-architecture': '-arch',
+    '--include-path': '-I',
+    '--library': '-l',
+    '--library-path': '-L',
+    '--linker-options': '-Xlinker',
+    '--m64': '-m64',
+    '--optimize': '-O',
+    '--output-file': '-o',
+    '--pre-include': '-include',
+    '--preprocess': '-E',
+    '--profile': '-pg',
+    '--save-temps': '-save-temps',
+    '--std': '-std',
+    '--system-include': '-isystem',
+    '--time': '-time',
+    '--undefine-macro': '-U',
+    '--verbose': '-v',
+    '--x': '-x',
+    '-V': '--version',
+    '-h': '--help',
+}
 
 def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
     """Apply fixes to args to nvcc.
@@ -838,10 +961,12 @@ def _get_cpp_command_for_files(compile_action):
     # Patch command by platform
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
-    compile_action.arguments = _nvcc_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
     source_files, header_files = _get_files(compile_action)
+
+    # Done after getting files since we may execute NVCC to get the files.
+    compile_action.arguments = _nvcc_patch(compile_action.arguments)
 
     return source_files, header_files, compile_action.arguments
 
