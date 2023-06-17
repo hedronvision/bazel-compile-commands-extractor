@@ -52,11 +52,11 @@ refresh_compile_commands(
 ```
 """
 
-
 ########################################
 # Implementation
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
+load("@rules_python//python:defs.bzl", "py_binary")
 
 def refresh_compile_commands(
         name,
@@ -99,6 +99,7 @@ def refresh_compile_commands(
             script_name,
         ],
         imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
+        deps = ["@pip_orjson//:pkg"],
         **kwargs
     )
 
