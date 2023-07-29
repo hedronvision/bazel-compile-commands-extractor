@@ -217,7 +217,11 @@ We'd also love to work with you on contributions and improvements, of course! De
 
 ## Other Projects Likely Of Interest
 
-If you're using Bazel for the C language family, it's likely you're also in need of a good way of making secure network requests.
+If you're using Bazel for the C language family, you'll likely also want some of our other tooling, like...
+
+1. A good way of making secure network requests: [hedronvision/bazel-make-cc-https-easy](https://github.com/hedronvision/bazel-make-cc-https-easy)
+2. A way to use std::filesystem across platforms: [hedronvision/bazel-cc-filesystem-backport](https://github.com/hedronvision/bazel-cc-filesystem-backport)
+
 If so, please check out our other project, [hedronvision/bazel-make-cc-https-easy](https://github.com/hedronvision/bazel-make-cc-https-easy).
 
 ---
