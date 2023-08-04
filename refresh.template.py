@@ -992,7 +992,7 @@ def _ensure_gitignore_entries_exist():
     if git_dir_process.returncode: return
 
     # Write into the gitignore hidden inside the .git directory
-    # This makes ignoring work automagically for people, while minimizing the code changes they have to think about or check in. https://github.com/hedronvision/bazel-compile-commands-extractor/pull/100 and https://github.com/hedronvision/bazel-compile-commands-extractor/issues/59 are exampels of use cases that this simplifies. It also marginally simplifies the case where people can't commit use of this tool to the repo they're working on.
+    # This makes ignoring work automagically for people, while minimizing the code changes they have to think about or check in. https://github.com/hedronvision/bazel-compile-commands-extractor/pull/100 and https://github.com/hedronvision/bazel-compile-commands-extractor/issues/59 are examples of use cases that this simplifies. It also marginally simplifies the case where people can't commit use of this tool to the repo they're working on.
     # IMO tools should to do this more broadly, especially now that git is so dominant.
     # Hidden gitignore documented in https://git-scm.com/docs/gitignore
     git_dir = pathlib.Path(git_dir_process.stdout.rstrip())
