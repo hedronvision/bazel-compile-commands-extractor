@@ -944,7 +944,7 @@ def _ensure_external_workspaces_link_exists():
     # Traverse into output_base via bazel-out, keeping the workspace position-independent, so it can be moved without rerunning
     dest = pathlib.Path('bazel-out/../../../external')
     if is_windows:
-        # On Windows, unfortunately, bazel-out is a junction, and acessing .. of a junction brings you back out the way you came. So we have to resolve bazel-out first. Not position-independent, but I think the best we can do
+        # On Windows, unfortunately, bazel-out is a junction, and accessing .. of a junction brings you back out the way you came. So we have to resolve bazel-out first. Not position-independent, but I think the best we can do
         dest = (pathlib.Path('bazel-out').resolve()/'../../../external').resolve()
 
     # Handle problem cases where //external exists
