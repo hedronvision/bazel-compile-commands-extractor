@@ -77,6 +77,11 @@ def refresh_compile_commands(
     elif type(targets) != "dict":  # Assume they've supplied a single string/label and wrap it
         targets = {targets: ""}
 
+    # Make any package-relative labels absolute
+    targets = {
+        target if target.startswith("/") or target.startswith("@") else "@{}//{}:{}".format(native.repository_name(), native.package_name(), target.removeprefix(":")): flags for target, flags in targets.items()
+    }
+
     # Create a wrapper script that prints a helpful error message if the python version is too old, generated from check_python_version.template.py
     version_checker_script_name = name + ".check_python_version.py"
     _check_python_version(name = version_checker_script_name, to_run = name)
@@ -93,6 +98,7 @@ def refresh_compile_commands(
             version_checker_script_name,
             script_name,
         ],
+        imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
         **kwargs
     )
 
