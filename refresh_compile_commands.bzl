@@ -36,6 +36,11 @@ refresh_compile_commands(
         # ^ excluding headers will speed up compile_commands.json generation *considerably* because we won't need to preprocess your code to figure out which headers you use.
         # However, if you use clangd and are looking for speed, we strongly recommend you follow the instructions below instead, since clangd is going to regularly infer the wrong commands for headers and give you lots of annoyingly unnecessary red squigglies.
 
+    # Using a hermetic Python interpreter?
+        # Pass your hermetic py_binary rule as py_binary_rule, e.g.:
+        # load("@my_python_toolchain//:defs.bzl", "py_binary")
+        # refresh_compile_commands(name = "...", py_binary_rule = py_binary)
+
     # Need things to run faster? [Either for compile_commands.json generation or clangd indexing.]
     # First: You might be able to refresh compile_commands.json slightly less often, making the current runtime okay.
         # If you're adding files, clangd should make pretty decent guesses at completions, using commands from nearby files. And if you're deleting files, there's not a problem. So you may not need to rerun refresh.py on every change to BUILD files. Instead, maybe refresh becomes something you run every so often when you can spare the time, making the current runtime okay.
@@ -63,6 +68,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        py_binary_rule = native.py_binary,
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -91,7 +97,7 @@ def refresh_compile_commands(
     _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
 
     # Combine them so the wrapper calls the main script
-    native.py_binary(
+    py_binary_rule(
         name = name,
         main = version_checker_script_name,
         srcs = [
