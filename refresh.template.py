@@ -36,8 +36,7 @@ import tempfile
 import time
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
-# orjson is much faster than the standard library's json module (1.9 seconds vs 6.6 seconds for a ~140 MB file).
-import orjson
+
 
 @enum.unique
 class SGR(enum.Enum):
@@ -544,7 +543,11 @@ def _get_headers(compile_action, source_path: str):
             cache_last_modified = os.path.getmtime(cache_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
             try:
                 with open(cache_file_path) as cache_file:
-                    action_key, cached_headers = orjson.loads(cache_file.read())
+                    try:
+                        from orjson import loads
+                        action_key, cached_headers = loads(cache_file.read())
+                    except ImportError:
+                        action_key, cached_headers = json.load(cache_file)
             except json.JSONDecodeError:
                 # Corrupted cache, which can happen if, for example, the user kills the program, since writes aren't atomic.
                 # But if it is the result of a bug, we want to print it before it's overwritten, so it can be reported
@@ -603,8 +606,13 @@ _get_headers.has_logged = False
 
 def _cache_compile_action(compile_action, cache_file_path, headers):
     cache = (compile_action.actionKey, list(headers))
-    with open(cache_file_path, 'wb') as cache_file:
-        cache_file.write(orjson.dumps(cache))
+    try:
+        from orjson import dumps
+        with open(cache_file_path, 'wb') as cache_file:
+            cache_file.write(dumps(cache))
+    except ImportError:
+        with open(cache_file_path, 'w') as cache_file:
+            json.dump(cache, cache_file)
 
 def _get_files(compile_action):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
@@ -1318,8 +1326,21 @@ def _ensure_cwd_is_workspace_root():
 
 def _write_compile_commands(compile_command_entries: typing.List[str]):
     file_name = 'compile_commands.json'
-    with open(file_name, 'wb') as output_file:
-            output_file.write(orjson.dumps(compile_command_entries))
+    try:
+        # orjson is much faster than the standard library's json module (1.9 seconds vs 6.6 seconds for a ~140 MB file).
+        from orjson import dumps
+        with open(file_name, 'wb') as output_file:
+            output_file.write(dumps(
+                compile_command_entries,
+            ))
+    except ImportError:
+        with open(file_name, 'w') as output_file:
+            json.dump(
+                compile_command_entries,
+                output_file,
+                indent=2, # Yay, human readability!
+                check_circular=False # For speed.
+            )
 
 def main():
     _ensure_cwd_is_workspace_root()
