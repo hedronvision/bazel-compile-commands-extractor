@@ -10,8 +10,6 @@ all_requirements = ["@pip_orjson//:pkg"]
 
 all_whl_requirements = ["@pip_orjson//:whl"]
 
-all_data_requirements = ["@pip_orjson//:data"]
-
 _packages = [("pip_orjson", "orjson==3.9.1")]
 _config = {"download_only": False, "enable_implicit_namespace_pkgs": False, "environment": {}, "extra_pip_args": [], "isolated": True, "pip_data_exclude": [], "python_interpreter": "python3", "python_interpreter_target": "@python_toolchain_x86_64-unknown-linux-gnu//:bin/python3", "quiet": True, "repo": "pip", "repo_prefix": "pip_", "timeout": 600}
 _annotations = {}
