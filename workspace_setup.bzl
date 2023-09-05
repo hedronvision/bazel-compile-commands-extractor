@@ -1,5 +1,3 @@
-"""Workspace setup macros."""
-
 # Do not change the filename; it is part of the user interface.
 
 def hedron_compile_commands_setup(module_ctx = None):
@@ -27,5 +25,3 @@ hedron_compile_commands_extension = module_extension( # Note: Doesn't break load
     # This extension is automatically loaded when using bzlmod (from MODULE.bazel) and will run the same function as WORKSPACE,
     # but passes in a module_ctx object for advanced context of the whole project, allowing for complex, project wide modifiying extensions and distinguishing between WORKSPACE and bzlmod setups.
 )
-
-install_python_deps()
