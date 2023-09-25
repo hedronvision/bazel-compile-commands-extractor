@@ -480,7 +480,7 @@ def _get_headers(compile_action, source_path: str):
         return set()
 
     output_file = None
-    for i, arg in enumerate(compile_action.arguments):
+    for i, arg in enumerate(_expand_arguments(compile_action.arguments)):
         # As a reference, clang docs: https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang1-o-file
         if arg == '-o' or arg == '--output': # clang/gcc. Docs https://clang.llvm.org/docs/ClangCommandLineReference.html
             output_file = compile_action.arguments[i+1]
@@ -557,13 +557,26 @@ def _get_headers(compile_action, source_path: str):
 _get_headers.has_logged = False
 
 
+def _expand_arguments(arguments):
+    """Expands @filename arguments by reading arguments from files they reference."""
+    out = []
+    for arg in arguments:
+        if arg.startswith('@') and not arg.startswith('@//'):
+            with open(arg[1:]) as f:
+                for line in f:
+                    out.append(line.strip())
+        else:
+            out.append(arg)
+    return out
+
+
 def _get_files(compile_action):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
 
     # Getting the source file is a little trickier than it might seem.
 
     # First, we do the obvious thing: Filter args to those that look like source files.
-    source_file_candidates = [arg for arg in compile_action.arguments if not arg.startswith('-') and arg.endswith(_get_files.source_extensions)]
+    source_file_candidates = [arg for arg in _expand_arguments(compile_action.arguments) if not arg.startswith('-') and arg.endswith(_get_files.source_extensions)]
     assert source_file_candidates, f"No source files found in compile args: {compile_action.arguments}.\nPlease file an issue with this information!"
     source_file = source_file_candidates[0]
 
