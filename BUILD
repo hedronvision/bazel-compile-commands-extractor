@@ -14,3 +14,5 @@ refresh_compile_commands(
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
 exports_files(["refresh.template.py", "check_python_version.template.py"])  # For implicit use by therefresh_compile_commands macro, not direct use.
+
+filegroup(name = "bzl_srcs", srcs = glob(["*.bzl"]), visibility = ["//visibility:public"])
