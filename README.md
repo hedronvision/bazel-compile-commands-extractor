@@ -42,7 +42,11 @@ Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for 
 
 There's a bunch of text here but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete—and we'd love to help you!
 
-This rule optionally uses the `orjson` pip package to significantly speed up JSON processing. You can install it via `pip install orjson -U`.
+This rule optionally uses the `orjson` pip package to significantly speed up JSON processing. You can add this before running the refresh command to ensure orjson availability:
+
+```shell
+pip show orjson >/dev/null || pip install orjson --user
+```
 
 ### First, add this tool to your Bazel setup.
 
