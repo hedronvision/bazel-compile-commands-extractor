@@ -1328,10 +1328,11 @@ def _write_compile_commands(compile_command_entries: typing.List[str]):
     file_name = 'compile_commands.json'
     try:
         # orjson is much faster than the standard library's json module (1.9 seconds vs 6.6 seconds for a ~140 MB file).
-        from orjson import dumps
+        from orjson import dumps, OPT_INDENT_2
         with open(file_name, 'wb') as output_file:
             output_file.write(dumps(
                 compile_command_entries,
+                option=OPT_INDENT_2
             ))
     except ImportError:
         with open(file_name, 'w') as output_file:
