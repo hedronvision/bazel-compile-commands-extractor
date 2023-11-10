@@ -1,0 +1,33 @@
+"""bzlmod implementation for bazel-compile-commands-extractor
+
+This allows people using the new bzlmod system to add bazel-compile-commands-extractor as a module directly
+You know you're using bzlmod if you use MODULE.bazel files, and have common --enable_bzlmod in your .bazelrc (or are using bazel v7+, it will default behaviour ??)
+
+
+USAGE:
+To add bazel-compile-commands-extractor to your bzlmod Bazel project, you should add one of the following:
+
+Local testing repo clone of bazel-compile-commands-extractor: (Add these to the MODULE.bazel of your project)
+bazel_dep(name = "hedron_compile_commands")
+local_path_override(
+    module_name = "hedron_compile_commands",
+    path = "../bazel-compile-commands-extractor" # Assuming the repo is cloned next to your project
+)
+
+Automatically get dependency from git repo: (Add these to the MODULE.bazel of your project)
+bazel_dep(name = "hedron_compile_commands")
+git_override(
+    module_name = "hedron_compile_commands",
+    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor",
+    commit = "ENTER-NEWEST-COMMIT-HASH-HERE!",
+    patches = [],
+    patch_cmds = [],
+    patch_strip = 0,
+)
+"""
+module(
+    name = "hedron_compile_commands",
+    version = "1.0.0",
+)
+
+use_extension("//:extensions.bzl", "hedron_compile_commands_extension")
