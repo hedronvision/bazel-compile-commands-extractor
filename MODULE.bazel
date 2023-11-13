@@ -20,9 +20,13 @@ git_override(
     module_name = "hedron_compile_commands",
     remote = "https://github.com/hedronvision/bazel-compile-commands-extractor",
     commit = "ENTER-NEWEST-COMMIT-HASH-HERE!",
-    patches = [],
-    patch_cmds = [],
-    patch_strip = 0,
+)
+
+Automatically get dependency from archive: (Add these to the MODULE.bazel of your project)
+archive_override(
+    module_name = "hedron_compile_commands",
+    urls = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/ENTER-NEWEST-COMMIT-HASH-HERE!.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-ENTER-NEWEST-COMMIT-HASH-HERE!",
 )
 """
 module(
@@ -30,4 +34,4 @@ module(
     version = "1.0.0",
 )
 
-use_extension("//:extensions.bzl", "hedron_compile_commands_extension")
+use_extension("//:workspace_setup.bzl", "hedron_compile_commands_extension")
