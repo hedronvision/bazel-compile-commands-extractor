@@ -42,7 +42,7 @@ Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for 
 
 There's a bunch of text here but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete—and we'd love to help you!
 
-### First, do the usual WORKSPACE setup.
+### If you're using the WORKSPACE system (you probably are), do the usual WORKSPACE setup:
 
 Copy this into your Bazel `WORKSPACE` file to add this repo as an external dependency, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
 
@@ -63,6 +63,20 @@ http_archive(
 )
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 hedron_compile_commands_setup()
+```
+
+### If you're using Bazel's new [bzlmod](https://bazel.build/external/migration) system:
+You're probably using bzlmod if you have `common --enable_bzlmod` in your `.bazelrc` (or are using Bazel v7+). If so, copy this into your Bazel `MODULE.bazel` file to add this repo as an external dependency, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
+
+```Starlark
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+git_override(
+    module_name = "hedron_compile_commands",
+    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
+    commit = "25ac20bc2b9b491c22798a54a1c9ecbc6b026749",
+    # Replace the commit hash (above) with the latest, the stale one here is too old to work with bzlmod.
+    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+)
 ```
 
 #### Suggestion: Updates

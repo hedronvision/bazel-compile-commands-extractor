@@ -14,7 +14,7 @@ def hedron_compile_commands_setup(ctx = None):
 
 hedron_compile_commands_extension = module_extension(
     implementation = hedron_compile_commands_setup,
-    # This extension is loaded when using bzlmod (MODULE.bazel) and will run the same command as WORKSPACE,
+    # This extension is loaded when using bzlmod (MODULE.bazel) and will run the same function as WORKSPACE,
     # but passes in a module_ctx object for advanced context of the whole project, allowing for complex, project wide modifiying extensions
     # It's not currently used but is always passed in. ctx is defaulted to None for compatibility with workspace setup.
 )
