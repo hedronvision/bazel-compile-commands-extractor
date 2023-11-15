@@ -1,6 +1,3 @@
-module(
-    name = "hedron_compile_commands",
-    version = "1.0.0",
-)
+module(name = "hedron_compile_commands")
 
 use_extension("//:workspace_setup.bzl", "hedron_compile_commands_extension")
