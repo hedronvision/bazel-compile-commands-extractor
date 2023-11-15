@@ -42,9 +42,27 @@ Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for 
 
 There's a bunch of text here but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete—and we'd love to help you!
 
-### First, do the usual WORKSPACE setup.
+### First, add this tool to your Bazel setup.
 
-Copy this into your Bazel `WORKSPACE` file to add this repo as an external dependency, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
+#### If you have a MODULE.bazel file and are using the new [bzlmod](https://bazel.build/external/migration) system
+Copy this into your `MODULE.bazel`, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
+
+```Starlark
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+git_override(
+    module_name = "hedron_compile_commands",
+    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
+    commit = "25ac20bc2b9b491c22798a54a1c9ecbc6b026749",
+    # Replace the commit hash (above) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main); the stale one here is too old to work with bzlmod.
+    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+)
+```
+
+#### If you're using the traditional WORKSPACE system
+
+Copy this into your Bazel `WORKSPACE` file, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
 
 ```Starlark
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -55,7 +73,7 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 http_archive(
     name = "hedron_compile_commands",
 
-    # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
+    # Replace the commit hash (ed994039a951b736091776d677f324b3903ef939) in both places (below) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main), rather than using the stale one here.
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
     url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/ed994039a951b736091776d677f324b3903ef939.tar.gz",
     strip_prefix = "bazel-compile-commands-extractor-ed994039a951b736091776d677f324b3903ef939",
@@ -65,7 +83,7 @@ load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_
 hedron_compile_commands_setup()
 ```
 
-#### Suggestion: Updates
+#### Either way: Get Updates via Renovate
 
 Improvements come frequently, so we'd recommend keeping up-to-date.
 
@@ -73,7 +91,7 @@ We'd strongly recommend you set up [Renovate](https://github.com/renovatebot/ren
 
 If not now, maybe come back to this step later, or watch this repo for updates. [Or hey, maybe give us a quick star, while you're thinking about watching.] Like Abseil, we live at head; the latest commit to the main branch is the commit you want. So don't rely on release notifications; use [Renovate](https://github.com/renovatebot/renovate) or poll manually for new commits.
 
-### Get the extractor running.
+### Second, get the extractor running.
 
 We'll generate a `compile_commands.json` file in the root of the Bazel workspace.
 
@@ -221,8 +239,6 @@ If you're using Bazel for the C language family, you'll likely also want some of
 
 1. A good way of making secure network requests: [hedronvision/bazel-make-cc-https-easy](https://github.com/hedronvision/bazel-make-cc-https-easy)
 2. A way to use std::filesystem across platforms: [hedronvision/bazel-cc-filesystem-backport](https://github.com/hedronvision/bazel-cc-filesystem-backport)
-
-If so, please check out our other project, [hedronvision/bazel-make-cc-https-easy](https://github.com/hedronvision/bazel-make-cc-https-easy).
 
 ---
 *Looking for implementation details instead? Want to dive into the codebase?*

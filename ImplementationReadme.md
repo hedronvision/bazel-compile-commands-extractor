@@ -12,14 +12,25 @@ Hello, and thanks for your interest in the codebase :)
 
 We'd recommend setting up for rapid iteration as follows:
 
-Get a local copy. (e.g. `git clone git@github.com:hedronvision/bazel-compile-commands-extractor.git`)
+Get a local copy. (e.g. `git clone https://github.com/hedronvision/bazel-compile-commands-extractor`, though you probably want to make a fork and clone that so you can easily contribute back.)
 
-Then point your main repo (from which you're seeing issues) to use your local development copy of the compile commands. To do that, open `WORKSPACE`, and swap out the `http_archive` loading `hedron_compile_commands` with the following.
+Then point your main repo (from which you're seeing issues) to use your local development copy of the compile commands by doing the following.
+
+If you're bringing in this tool via your `MODULE.bazel` file, swap out the `git_override` loading `hedron_compile_commands` with the following.
+```Starlark
+local_path_override(
+    module_name = "hedron_compile_commands",
+    path = "../bazel-compile-commands-extractor" # Assuming this tool is cloned next to your project's repo
+)
+``````
+
+
+If you're bringing in this tool via your `WORKSPACE` file, swap out the `http_archive` loading `hedron_compile_commands` with the following.
 
 ```Starlark
 local_repository(
     name = "hedron_compile_commands",
-    path = "../bazel-compile-commands-extractor", # Or wherever you put it.
+    path = "../bazel-compile-commands-extractor", # Assuming this tool is cloned next to your project's repo
 )
 ```
 
