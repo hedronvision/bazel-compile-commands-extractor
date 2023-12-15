@@ -3,8 +3,9 @@ As a template, this file helps implement the refresh_compile_commands rule and i
 
 Interface (after template expansion):
 - `bazel run` to regenerate compile_commands.json, so autocomplete (and any other clang tooling!) reflect the latest Bazel build files.
-    - No arguments are needed; info from the rule baked into the template expansion.
+    - No arguments are needed; info from the rule is baked into the template expansion.
         - Any arguments passed are interpreted as arguments needed for the builds being analyzed.
+        - The one exception is --file=<path>, which can be used to incrementally add/update commands, focused around that one file. This is intended to be auto-called by editor plugins. It overrides any exclude_* template arguments enough that you can get a command for the file you asked about.
     - Requires being run under Bazel so we can access the workspace root environment variable.
 - Output: a compile_commands.json in the workspace root that clang tooling (or you!) can look at to figure out how files are being compiled by Bazel
     - Crucially, this output is de-Bazeled; The result is a command that could be run from the workspace root directly, with no Bazel-specific requirements, environment variables, etc.
@@ -33,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import types
 import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
@@ -442,6 +444,8 @@ def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
 def _file_is_in_main_workspace_and_not_external(file_str: str):
     file_path = pathlib.PurePath(file_str)
     if file_path.is_absolute():
+        # MSVC emits absolute paths for all headers, so we need to handle the case where there are absolute paths into the workspace
+        # TODO be careful about this case with --file
         workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
         if not _is_relative_to(file_path, workspace_absolute):
             return False
@@ -461,7 +465,25 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
     return True
 
 
-def _get_headers(compile_action, source_path: str):
+def _filter_through_headers(headers: set, found_header_focused_upon: threading.Event, focused_on_file: str = None):
+    """Call me before returning a set of headers from _get_headers().
+
+    Either checks to see if the header being focused on with --file has been found or excludes external headers, if appropriate.
+    """
+    if focused_on_file:
+        # TODO full paths on windows--maybe easier to normalize them to relative upon generation, above.
+        # TODO discuss the below.
+        # If we're focusing on a header, we return just that header. Why? Only source files are useful for background indexing, since they include headers, and we'll already save the work for header finding in our internal caches.
+        if focused_on_file in headers:
+            found_header_focused_upon.set()
+            return {focused_on_file}
+        return set()
+    elif {exclude_headers} == "external":
+        headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
+    return headers
+
+
+def _get_headers(compile_action, source_path: str, found_header_focused_upon: threading.Event, focused_on_file: str = None):
     """Gets the headers used by a particular compile command.
 
     Relatively slow. Requires running the C preprocessor.
@@ -472,11 +494,18 @@ def _get_headers(compile_action, source_path: str):
     # As an alternative approach, you might consider trying to get the headers by inspecting the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
-    if {exclude_headers} == "all":
+    # First, check to see if there's a reason we shouldn't be running this relatively expensive header search
+    if focused_on_file:
+        # No need to get headers if we're focused on a source file.
+        # Do not un-nest; if we're explicitly told to focus on a header, we shouldn't exclude headers.
+        # OR We've already found what we were looking for! -> Don't do unnecessary, time consuming work.
+        if focused_on_file.endswith(_get_files.source_extensions) or found_header_focused_upon.is_set():
+            return set()
+    elif {exclude_headers} == "all":
         return set()
     elif {exclude_headers} == "external" and not {exclude_external_sources} and compile_action.is_external:
         # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
-        # The `not {exclude_external_sources}`` clause makes sure is_external was precomputed; there are no external actions if they've already been filtered in the process of excluding external sources.
+        # The `not exclude_external_sources` clause makes sure is_external was precomputed; there are no external actions if they've already been filtered in the process of excluding external sources.
         return set()
 
     output_file = None
@@ -526,7 +555,7 @@ def _get_headers(compile_action, source_path: str):
                 if (action_key == compile_action.actionKey
                     and _get_cached_adjusted_modified_time(source_path) <= cache_last_modified
                     and all(_get_cached_adjusted_modified_time(header_path) <= cache_last_modified for header_path in headers)):
-                    return set(headers)
+                    return _filter_through_headers(set(headers), found_header_focused_upon, focused_on_file)
 
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers = _get_headers_msvc(compile_action.arguments, source_path)
@@ -550,14 +579,11 @@ def _get_headers(compile_action, source_path: str):
         with open(cache_file_path, 'w') as cache_file:
             json.dump((compile_action.actionKey, list(headers)), cache_file)
 
-    if {exclude_headers} == "external":
-        headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
-
-    return headers
+    return _filter_through_headers(headers, found_header_focused_upon, focused_on_file)
 _get_headers.has_logged = False
 
 
-def _get_files(compile_action):
+def _get_files(compile_action, found_header_focused_upon: threading.Event, focused_on_file: str = None):
     """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
 
     # Getting the source file is a little trickier than it might seem.
@@ -617,7 +643,7 @@ def _get_files(compile_action):
     if os.path.splitext(source_file)[1] in _get_files.assembly_source_extensions:
         return {source_file}, set()
 
-    header_files = _get_headers(compile_action, source_file)
+    header_files = _get_headers(compile_action, source_file, found_header_focused_upon, focused_on_file)
 
     # Ambiguous .h headers need a language specified if they aren't C, or clangd sometimes makes mistakes
     # Delete this and unused extension variables when clangd >= 16 is released, since their underlying issues are resolved at HEAD
@@ -765,7 +791,7 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _get_cpp_command_for_files(compile_action):
+def _get_cpp_command_for_files(compile_action, found_header_focused_upon: threading.Event, focused_on_file: str = None):
     """Reformat compile_action into a compile command clangd can understand.
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
@@ -775,12 +801,12 @@ def _get_cpp_command_for_files(compile_action):
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
-    source_files, header_files = _get_files(compile_action)
+    source_files, header_files = _get_files(compile_action, found_header_focused_upon, focused_on_file)
 
     return source_files, header_files, compile_action.arguments
 
 
-def _convert_compile_commands(aquery_output):
+def _convert_compile_commands(aquery_output, focused_on_file: str = None):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
@@ -791,7 +817,7 @@ def _convert_compile_commands(aquery_output):
     """
 
     # Tag actions as external if we're going to need to know that later.
-    if {exclude_headers} == "external" and not {exclude_external_sources}:
+    if not focused_on_file and {exclude_headers} == "external" and not {exclude_external_sources}:
         targets_by_id = {target.id : target.label for target in aquery_output.targets}
         for action in aquery_output.actions:
             # Tag action as external if it's created by an external target
@@ -804,7 +830,23 @@ def _convert_compile_commands(aquery_output):
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
+        found_header_focused_upon = threading.Event()  # MIN_PY=3.9: Consider replacing with threadpool.shutdown(cancel_futures=True), possibly also eliminating threading import
+        output_iterator = threadpool.map(
+            lambda compile_action: _get_cpp_command_for_files(compile_action, found_header_focused_upon, focused_on_file), # Binding along side inputs
+            aquery_output.actions,
+            timeout=3 if focused_on_file else None  # If running in fast, interactive mode with --file, we need to cap latency. #TODO test timeout--if it doesn't work, cap input length here, before passing in array. Might also want to divide timeout/cap by #targets
+        )
+    # Collect outputs, tolerating any timeouts
+    outputs = []
+    try:
+        for output in output_iterator:
+            outputs.append(output)
+    except concurrent.futures.TimeoutError:
+        assert focused_on_file, "Timeout should only have been set in the fast, interactive --file mode, focused on a single file."
+        if not found_header_focused_upon.is_set():
+            log_warning(f""">>> Timed out looking for a command for {focused_on_file}
+    If that's a source file, please report this. We should work to improve the performance.
+    If that's a header file, we should probably do the same, but it may be unavoidable.""")
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
@@ -820,51 +862,25 @@ def _convert_compile_commands(aquery_output):
 
         for file in itertools.chain(source_files, header_files_not_already_written):
             if file == 'external/bazel_tools/src/tools/launcher/dummy.cc': continue # Suppress Bazel internal files leaking through. Hopefully will prevent issues like https://github.com/hedronvision/bazel-compile-commands-extractor/issues/77
-            yield {
+            yield { # TODO for consistency, let's have this return a list if its parent is returning a list. That'd also let us strip the list() cast in the found = True block, below
                 # Docs about compile_commands.json format: https://clang.llvm.org/docs/JSONCompilationDatabase.html#format
                 'file': file,
-                # Using `arguments' instead of 'command' because it's now preferred by clangd. Heads also that  shlex.join doesn't work for windows cmd, so you'd need to use windows_list2cmdline if we ever switched back. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
+                # Using `arguments' instead of 'command' because it's now preferred by clangd. Heads also that shlex.join doesn't work for windows cmd, so you'd need to use windows_list2cmdline if we ever switched back. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
                 'arguments': compile_command_args,
                 # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
                 'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
             }
 
 
-def _get_commands(target: str, flags: str):
-    """Yields compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
-    # Log clear completion messages
-    log_info(f">>> Analyzing commands used in {target}")
-
-    additional_flags = shlex.split(flags) + sys.argv[1:]
-
-    # Detect anything that looks like a build target in the flags, and issue a warning.
-    # Note that positional arguments after -- are all interpreted as target patterns. (If it's at the end, then no worries.)
-    # And that we have to look for targets. checking for a - prefix is not enough. Consider the case of `-c opt` leading to a false positive
-    if ('--' in additional_flags[:-1]
-        or any(re.match(r'-?(@|:|//)', f) for f in additional_flags)):
-        log_warning(""">>> The flags you passed seem to contain targets.
-    Try adding them as targets in your refresh_compile_commands rather than flags.
-    [Specifying targets at runtime isn't supported yet, and in a moment, Bazel will likely fail to parse without our help. If you need to be able to specify targets at runtime, and can't easily just add them to your refresh_compile_commands, please open an issue or file a PR. You may also want to refer to https://github.com/hedronvision/bazel-compile-commands-extractor/issues/62.]""")
-
-    # Quick (imperfect) effort at detecting flags in the targets.
-    # Can't detect flags starting with -, because they could be subtraction patterns.
-    if any(target.startswith('--') for target in shlex.split(target)):
-        log_warning(""">>> The target you specified seems to contain flags.
-    Try adding them as flags in your refresh_compile_commands rather than targets.
-    In a moment, Bazel will likely fail to parse.""")
-
-    # First, query Bazel's C-family compile actions for that configured target
-    target_statment = f'deps({target})'
-    if {exclude_external_sources}:
-        # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
-        target_statment = f"filter('^(//|@//)',{target_statment})"
+def _get_compile_commands_for_aquery(aquery_target_statement: str, additional_aquery_flags: typing.List[str], focused_on_file: str = None):
+    """Return compile_commands.json entries for a given aquery invocation and file focus."""
     aquery_args = [
         'bazel',
         'aquery',
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
         # One bummer, not described in the docs, is that aquery filters over *all* actions for a given target, rather than just those that would be run by a build to produce a given output. This mostly isn't a problem, but can sometimes surface extra, unnecessary, misconfigured actions. Chris has emailed the authors to discuss and filed an issue so anyone reading this could track it: https://github.com/bazelbuild/bazel/issues/14156.
-        f"mnemonic('(Objc|Cpp)Compile',{target_statment})",
+        f"mnemonic('(Objc|Cpp)Compile', {aquery_target_statement})",
         # We switched to jsonproto instead of proto because of https://github.com/bazelbuild/bazel/issues/13404. We could change back when fixed--reverting most of the commit that added this line and tweaking the build file to depend on the target in that issue. That said, it's kinda nice to be free of the dependency, unless (OPTIMNOTE) jsonproto becomes a performance bottleneck compated to binary protos.
         '--output=jsonproto',
         # We'll disable artifact output for efficiency, since it's large and we don't use them. Small win timewise, but dramatically less json output from aquery.
@@ -872,19 +888,19 @@ def _get_commands(target: str, flags: str):
         # Shush logging. Just for readability.
         '--ui_event_filters=-info',
         '--noshow_progress',
-        # Disable param files, which would obscure compile actions
+        # Don't hide command-line arguments in param files, which would obscure compile commands.
         # Mostly, people enable param files on Windows to avoid the relatively short command length limit.
             # For more, see compiler_param_file in https://bazel.build/docs/windows
             # They are, however, technically supported on other platforms/compilers.
         # That's all well and good, but param files would prevent us from seeing compile actions before the param files had been generated by compilation.
         # Since clangd has no such length limit, we'll disable param files for our aquery run.
-        '--features=-compiler_param_file',
+        '--features=-compiler_param_file', # TODO switch to --include_param_files (somewhat confusingly named, but includes the *contents* of param files on the command line) and test on Windows. Including in this diff to not create conflicts.
         # Disable layering_check during, because it causes large-scale dependence on generated module map files that prevent header extraction before their generation
             # For more context, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/83
             # If https://github.com/clangd/clangd/issues/123 is resolved and we're not doing header extraction, we could try removing this, checking that there aren't erroneous red squigglies squigglies before the module maps are generated.
             # If Bazel starts supporting modules (https://github.com/bazelbuild/bazel/issues/4005), we'll probably need to make changes that subsume this.
         '--features=-layering_check',
-    ] + additional_flags
+    ] + additional_aquery_flags
 
     aquery_process = subprocess.run(
         aquery_args,
@@ -911,23 +927,95 @@ def _get_commands(target: str, flags: str):
     except json.JSONDecodeError:
         print("Bazel aquery failed. Command:", aquery_args, file=sys.stderr)
         log_warning(f">>> Failed extracting commands for {target}\n    Continuing gracefully...")
-        return
+        return []
 
     if not getattr(parsed_aquery_output, 'actions', None): # Unifies cases: No actions (or actions list is empty)
+        # TODO the  different flags warning in stderr is common enough that we might want to either filter it or adjust this messaging.
+        # TODO simplify/unify logic around warning about not being able to find commands.
         if aquery_process.stderr:
             log_warning(f""">>> Bazel lists no applicable compile commands for {target}, probably because of errors in your BUILD files, printed above.
     Continuing gracefully...""")
-        else:
+        elif not focused_on_file:
             log_warning(f""">>> Bazel lists no applicable compile commands for {target}
     If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
     Continuing gracefully...""")
-        return
+        return []
 
-    yield from _convert_compile_commands(parsed_aquery_output)
+    return _convert_compile_commands(parsed_aquery_output, focused_on_file)
 
 
-    # Log clear completion messages
+def _get_commands(target: str, flags: str):
+    """Return compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
+    log_info(f">>> Analyzing commands used in {target}")
+
+    # Parse the --file= flag, if any, passing along all other arguments to aquery
+    additional_flags = shlex.split(flags) + [arg for arg in sys.argv[1:] if not arg.startswith('--file=')]
+    file_flags = [arg[len('--file='):] for arg in sys.argv[1:] if arg.startswith('--file=')]
+    if len(file_flags) > 1:
+        log_error(">>> At most one --file flag is supported.")
+        sys.exit(1)
+    if any(arg.startswith('--file') for arg in additional_flags):
+        log_error(">>> Only the --file=<file_target> form is supported.")
+        sys.exit(1)
+
+
+    # Screen the remaining flags for obvious issues to help people debug.
+
+    # Detect anything that looks like a build target in the flags, and issue a warning.
+    # Note that positional arguments after -- are all interpreted as target patterns.
+    # And that we have to look for targets. Checking for a - prefix is not enough. Consider the case of `-c opt`, leading to a false positive.
+    if ('--' in additional_flags
+        or any(re.match(r'-?(@|:|//)', f) for f in additional_flags)):
+        log_warning(""">>> The flags you passed seem to contain targets.
+    Try adding them as targets in your refresh_compile_commands rather than flags.
+    [Specifying targets at runtime isn't supported yet, and in a moment, Bazel will likely fail to parse without our help. If you need to be able to specify targets at runtime, and can't easily just add them to your refresh_compile_commands, please open an issue or file a PR. You may also want to refer to https://github.com/hedronvision/bazel-compile-commands-extractor/issues/62.]""")
+
+    # Quick (imperfect) effort at detecting flags in the targets.
+    # Can't detect flags starting with -, because they could be subtraction patterns.
+    if any(target.startswith('--') for target in shlex.split(target)):
+        log_warning(""">>> The target you specified seems to contain flags.
+    Try adding them as flags in your refresh_compile_commands rather than targets.
+    In a moment, Bazel will likely fail to parse.""")
+
+
+    # Then, actually query Bazel's compile actions for that configured target
+    target_statement = f'deps({target})' # TODO we should always be quoting targets when we splice them in. Let's use single quotes like with mnemonic, above. See slightly down in https://bazel.build/query/language#tokens
+    compile_commands = [] # TODO simplify loop, especially if we can reduce it to one command per case (see below)? Move warning messages outside?
+    if file_flags:
+        file_path = file_flags[0]
+        found = False
+        target_statement_candidates = []
+        if file_path.endswith(_get_files.source_extensions):
+            target_statement_candidates.append(f"inputs('{re.escape(file_path)}', {target_statement})")
+        else:
+            fname = os.path.basename(file_path) # TODO consider running a  preliminary aquery to make this more specific, getting the targets that generate the given file. Use outputs() aquery function. Should also test the case where the file is generated/is coming in as a filegroup--that's likely to be fixed by this change.
+            header_target_statement = f"let v = {target_statement} in attr(hdrs, '{fname}', $v) + attr(srcs, '{fname}', $v)" # Bazel does not list headers as direct inputs, but rather hides them behind "middlemen", necessitating a query like this.
+            target_statement_candidates.extend([
+                header_target_statement,
+                f"allpaths({target}, {header_target_statement})",  # Ordering is ideal, breadth-first from the deepest dependency, despite the docs. TODO (1) There's a bazel bug that produces extra actions, not on the path but downstream, so we probably want to pass --noinclude_aspects per https://github.com/bazelbuild/bazel/issues/18289 and https://github.com/bazelbuild/bazel/issues/16310 to eliminate them (at the cost of some valid aspects). (2) We might want to benchmark with --infer_universe_scope (if supported) and --universe-scope=target with query allrdeps({header_target_statement}, <maybe some limited depth>) or rdeps, checking speed but also ordering (the docs indicate it is likely to be lost, which is a problem) and for inclusion of the header target. We'd guess it'll have the same aspects bug as allpaths. (3) We probably also also want to *just* run this query, not the whole list, since it captures the former and is therefore unlikely to add much latency, since a given header is probabably either used internally to the target (find on first match) for header-only (must traverse all paths in all targets until you get a match) for all top-level targets, and since we can separate out the last, see below.
+                f'deps({target})', # TODO: Let's detect out-of-bazel, absolute  paths and run this if and only if we're looking for a system header. We need to think about how we want to handle absolute paths more generally, perhaps normalizing them to relative if possible, like with the windows absolute path issue, above.
+            ])
+        for target_statement in target_statement_candidates:
+            commands = list(_get_compile_commands_for_aquery(target_statement, additional_flags, file_path))
+            compile_commands.extend(commands)  # If we did the work to generate a command, we'll update it, whether it's for the requested file or not.
+            if any(command['file'].endswith(file_path) for command in commands):
+                found = True
+                break
+        if not found:
+            log_warning(f""">>> Couldn't quickly find a compile command for {file_path} in {target}
+    Continuing gracefully...""") # TODO simplify/unify logic around warning about not being able to find commands.
+    else:
+        if {exclude_external_sources}:
+            # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
+            target_statement = f"filter('^(//|@//)',{target_statement})"
+        compile_commands.extend(_get_compile_commands_for_aquery(target_statement, additional_flags))
+        if not compile_commands:
+            log_warning(f""">>> Bazel lists no applicable compile commands for {target}
+    If this is a header-only library, please instead specify a test or binary target that compiles it (search "header-only" in README.md).
+    Continuing gracefully...""") # TODO simplify/unify logic around warning about not being able to find commands.
+
     log_success(f">>> Finished extracting commands for {target}")
+    return compile_commands
 
 
 def _ensure_external_workspaces_link_exists():
@@ -1054,6 +1142,7 @@ def main():
     _ensure_gitignore_entries_exist()
     _ensure_external_workspaces_link_exists()
 
+    # TODO for --file, don't continue traversing targets after the first command has been found. Probably push this looping and template expansion inside of _get_commands().
     target_flag_pairs = [
         # Begin: template filled by Bazel
         {target_flag_pairs}
@@ -1065,11 +1154,21 @@ def main():
         compile_command_entries.extend(_get_commands(target, flags))
 
     if not compile_command_entries:
-        log_error(""">>> Not (over)writing compile_commands.json, since no commands were extracted and an empty file is of no use.
-    There should be actionable warnings, above, that led to this.""")
+        log_error(">>> Not writing to compile_commands.json, since no commands were extracted.")
         sys.exit(1)
 
-    # Chain output into compile_commands.json
+    # --file triggers incremental update of compile_commands.json
+    if any(arg.startswith('--file=') for arg in sys.argv[1:]) and os.path.isfile('compile_commands.json'):
+        previous_compile_command_entries = []
+        try:
+            with open('compile_commands.json') as compile_commands_file:
+                previous_compile_command_entries = json.load(compile_commands_file)
+        except:
+            log_warning(">>> Couldn't read previous compile_commands.json. Overwriting instead of merging...")
+        else:
+            updated_files = set(entry['file'] for entry in compile_command_entries)
+            compile_command_entries += [entry for entry in previous_compile_command_entries if entry['file'] not in updated_files]
+
     with open('compile_commands.json', 'w') as output_file:
         json.dump(
             compile_command_entries,

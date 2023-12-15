@@ -49,6 +49,8 @@ refresh_compile_commands(
         # exclude_headers = "external",
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
+    # That's still not enough; I'm working on a huge codebase!
+        # This tool supports a fast, incremental mode that can be used to add/update commands for individual files. Let's work together to configure editors to use it, invoking this tool on file open and BUILD-file save. Please file an issue to let us know about your interest--or willingness to help (https://github.com/hedronvision/bazel-compile-commands-extractor/issues/new)! (See also: --file flag in refresh.template.py)
 ```
 """
 
