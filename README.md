@@ -217,11 +217,11 @@ We use this tool every day to develop a cross-platform library for iOS and Andro
 
 All the usual clangd features should work. CMD/CTRL+click navigation (or option if you've changed keybindings), smart rename, autocomplete, highlighting etc. Everything you expect in an IDE should be there (because most good IDEs are backed by `clangd`). As a general principle: If you're choosing tooling that needs to understand a programming language, you want it to be based on a compiler frontend for that language, which clangd does as part of the LLVM/clang project.
 
-Everything should also work for generated files, though you may have to run a build for the generated file to exist.
+Everything should also work for generated files, though you may have to run a build for the generated file to exist. If you're using this with remote execution or cache, you'll likely have to use `--remote_download_regex` to pull down the header and source files and to avoid errors in-editor, now that build without the bytes (`--remote_download_toplevel`) is the Bazel default. If you work through this, we'd love it if you'd give back and file a PR adding good instructions for everyone else --or at least share what you've learned in an issue. You'll also want to pull down *.d dependency files on non-Windows; they let us find headers much faster when they're available as a cache. We'd appreciate if you'd also check to make sure that they're pulled down even without (`--noexperimental_inmemory_dotd_files`). Thanks for helping!
 
 ## Rough Edges
 
-We've self-filed issues for the rough edges we know about and are tracking. We'd love to hear from you there about what you're seeing, good and bad. Please add things if you find more rough edges, and let us know if you need help or more features.
+Otherwise, we've self-filed issues for the rough edges we know about and are tracking. We'd love to hear from you there about what you're seeing, good and bad. Please add things if you find more rough edges, and let us know if you need help or more features.
 
 On the other hand, if you've set things up and they're working well, we'd still love to hear from you. Please file a "non-issue" in the issues tab describing your success! We'd love to hear what you're working on, what platforms you're using, and what you're finding most useful. And maybe also toss a star our way so we know it was helpful to you.
 
