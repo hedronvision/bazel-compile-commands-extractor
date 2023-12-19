@@ -19,4 +19,4 @@ filegroup(name = "bzl_srcs_for_stardoc", srcs = glob(["**/*.bzl"]) + ["@bazel_to
 # Implementation:
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
-exports_files(["refresh.template.py", "check_python_version.template.py"])  # For implicit use by therefresh_compile_commands macro, not direct use.
+exports_files(["refresh.template.py", "check_python_version.template.py"])  # For implicit use by the refresh_compile_commands macro, not direct use.
