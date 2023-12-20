@@ -1052,8 +1052,12 @@ def _ensure_cwd_is_workspace_root():
 
 def main():
     _ensure_cwd_is_workspace_root()
-    _ensure_gitignore_entries_exist()
-    _ensure_external_workspaces_link_exists()
+
+    if {update_gitignore}:
+        _ensure_gitignore_entries_exist()
+
+    if {link_external}:
+        _ensure_external_workspaces_link_exists()
 
     target_flag_pairs = [
         # Begin: template filled by Bazel
