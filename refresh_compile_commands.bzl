@@ -55,6 +55,9 @@ refresh_compile_commands(
 
     # refresh_compile_commands will automatically create a symlink for external workspaces at /external.
         # You can disable this behavior with link_external = False.
+
+    # refresh_compile_commands does not work with --experimental_convenience_symlinks=ignore.
+        # For these workspaces, you can use absolute paths to the bazel build artifacts by setting rewrite_bazel_paths = True.
 ```
 """
 
@@ -71,6 +74,7 @@ def refresh_compile_commands(
         exclude_external_sources = False,
         update_gitignore = True,
         link_external = True,
+        rewrite_bazel_paths = False,
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -103,6 +107,7 @@ def refresh_compile_commands(
         exclude_external_sources = exclude_external_sources,
         update_gitignore = update_gitignore,
         link_external = link_external,
+        rewrite_bazel_paths = rewrite_bazel_paths,
         **kwargs
     )
 
@@ -133,6 +138,7 @@ def _expand_template_impl(ctx):
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
             "{update_gitignore}": repr(ctx.attr.update_gitignore),
             "{link_external}": repr(ctx.attr.link_external),
+            "{rewrite_bazel_paths}": repr(ctx.attr.rewrite_bazel_paths),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -144,6 +150,7 @@ _expand_template = rule(
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
         "update_gitignore": attr.bool(default = True),
         "link_external": attr.bool(default = True),
+        "rewrite_bazel_paths": attr.bool(default = False),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
         # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
