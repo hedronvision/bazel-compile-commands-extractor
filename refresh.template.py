@@ -765,7 +765,21 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _get_cpp_command_for_files(compile_action):
+def _apply_path_replacements(compile_args: typing.List[str], replacements: typing.Mapping[str, str]):
+    def apply_path_replacement(arg):
+        for (prefix, replacement) in replacements.items():
+            if arg.startswith(prefix):
+                return replacement + arg[len(prefix):]
+            elif arg.startswith('-I' + prefix):
+                return replacement + arg[2 + len(prefix):]
+            elif '={}'.format(prefix) in arg:
+                return arg.replace('={}'.format(prefix), '={}'.format(replacement))
+        return arg
+
+    return [apply_path_replacement(arg) for arg in compile_args]
+
+
+def _get_cpp_command_for_files(compile_action, replacements):
     """Reformat compile_action into a compile command clangd can understand.
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
@@ -774,13 +788,14 @@ def _get_cpp_command_for_files(compile_action):
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
+    compile_action.arguments = _apply_path_replacements(compile_action.arguments, replacements)
 
     source_files, header_files = _get_files(compile_action)
 
     return source_files, header_files, compile_action.arguments
 
 
-def _convert_compile_commands(aquery_output):
+def _convert_compile_commands(aquery_output, replacements):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
@@ -799,12 +814,15 @@ def _convert_compile_commands(aquery_output):
             assert not target.startswith('//external'), f"Expecting external targets will start with @. Found //external for action {action}, target {target}"
             action.is_external = target.startswith('@') and not target.startswith('@//')
 
+    def worker(compile_action):
+        return _get_cpp_command_for_files(compile_action, replacements)
+
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
+        outputs = threadpool.map(worker, aquery_output.actions)
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
@@ -924,7 +942,21 @@ def _get_commands(target: str, flags: str):
     Continuing gracefully...""")
         return
 
-    yield from _convert_compile_commands(parsed_aquery_output)
+    replacements = {}
+    if {rewrite_bazel_paths}:
+        info_process = subprocess.run(
+            ['bazel', 'info', 'output_path'],
+            capture_output=True,
+            encoding=locale.getpreferredencoding(),
+        )
+
+        output_path = pathlib.Path(info_process.stdout.strip())
+        replacements = {
+            "bazel-out/": os.fspath(output_path) + "/",
+            "external/": os.fspath(output_path.parent / "external") + "/",
+        }
+
+    yield from _convert_compile_commands(parsed_aquery_output, replacements)
 
 
     # Log clear completion messages
