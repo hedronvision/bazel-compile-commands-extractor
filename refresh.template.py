@@ -49,6 +49,11 @@ class SGR(enum.Enum):
     FG_BLUE = '\033[0;34m'
 
 
+class BazelInfo(typing.NamedTuple):
+    output_path: pathlib.Path
+    external_path: pathlib.Path
+
+
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
     """Log a message to stderr wrapped in an SGR context."""
     print(sgr.value, colored_message, SGR.RESET.value, uncolored_message, sep='', file=sys.stderr, flush=True)
@@ -765,7 +770,42 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _get_cpp_command_for_files(compile_action):
+def _path_replacement_for_arg(arg: str, replacements: typing.Mapping[str, str]):
+    for (prefix, replacement) in replacements.items():
+        # Some commands are output with the argument name and the argument value
+        # split across two arguments. This condition checks for these cases by
+        # detecting arguments that start with e.g. bazel-out/.
+        #
+        # Example: -o, bazel-out/...
+        if arg.startswith(prefix):
+            return replacement + arg[len(prefix):]
+        # Bazel adds directories to include search paths using -I options. This
+        # condition checks for these cases.
+        #
+        # See: https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-I-dir
+        #
+        # Example: -Ibazel-out/...
+        elif arg.startswith('-I' + prefix):
+            return replacement + arg[2 + len(prefix):]
+        # Some commands are output with the argument name and the argument value
+        # combined within the same argument, seperated by an equals sign.
+        #
+        # Example: -frandom-seed=bazel-out/...
+        elif '={}'.format(prefix) in arg:
+            return arg.replace('={}'.format(prefix), '={}'.format(replacement), 1)
+    return arg
+
+
+def _apply_path_replacements(compile_args: typing.List[str], bazel_info: BazelInfo):
+    replacements = {
+        "bazel-out/": os.fspath(bazel_info.output_path) + "/",
+        "external/": os.fspath(bazel_info.external_path) + "/",
+    }
+
+    return [_path_replacement_for_arg(arg, replacements) for arg in compile_args]
+
+
+def _get_cpp_command_for_files(compile_action, bazel_info):
     """Reformat compile_action into a compile command clangd can understand.
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
@@ -775,12 +815,15 @@ def _get_cpp_command_for_files(compile_action):
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
 
+    if {rewrite_bazel_paths}:
+        compile_action.arguments = _apply_path_replacements(compile_action.arguments, bazel_info)
+
     source_files, header_files = _get_files(compile_action)
 
     return source_files, header_files, compile_action.arguments
 
 
-def _convert_compile_commands(aquery_output):
+def _convert_compile_commands(aquery_output, bazel_info):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
     Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
@@ -799,12 +842,15 @@ def _convert_compile_commands(aquery_output):
             assert not target.startswith('//external'), f"Expecting external targets will start with @. Found //external for action {action}, target {target}"
             action.is_external = target.startswith('@') and not target.startswith('@//')
 
+    def worker(compile_action):
+        return _get_cpp_command_for_files(compile_action, bazel_info)
+
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
+        outputs = threadpool.map(worker, aquery_output.actions)
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
@@ -924,7 +970,25 @@ def _get_commands(target: str, flags: str):
     Continuing gracefully...""")
         return
 
-    yield from _convert_compile_commands(parsed_aquery_output)
+    output_path_process = subprocess.run(
+        ['bazel', 'info', 'output_path'],
+        capture_output=True,
+        encoding=locale.getpreferredencoding(),
+    )
+
+    output_path = pathlib.Path(output_path_process.stdout.strip())
+
+    output_base_process = subprocess.run(
+        ['bazel', 'info', 'output_base'],
+        capture_output=True,
+        encoding=locale.getpreferredencoding(),
+    )
+
+    output_base = pathlib.Path(output_base_process.stdout.strip())
+    external_path = output_base.joinpath("external")
+
+    bazel_info = BazelInfo(output_path, external_path)
+    yield from _convert_compile_commands(parsed_aquery_output, bazel_info)
 
 
     # Log clear completion messages
@@ -1052,8 +1116,12 @@ def _ensure_cwd_is_workspace_root():
 
 def main():
     _ensure_cwd_is_workspace_root()
-    _ensure_gitignore_entries_exist()
-    _ensure_external_workspaces_link_exists()
+
+    if {update_gitignore}:
+        _ensure_gitignore_entries_exist()
+
+    if {link_external}:
+        _ensure_external_workspaces_link_exists()
 
     target_flag_pairs = [
         # Begin: template filled by Bazel

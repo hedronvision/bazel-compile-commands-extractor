@@ -49,6 +49,15 @@ refresh_compile_commands(
         # exclude_headers = "external",
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
+
+    # refresh_compile_commands will automatically update .git/info/exclude by default.
+        # You can disable this behavior with update_gitignore = False.
+
+    # refresh_compile_commands will automatically create a symlink for external workspaces at /external.
+        # You can disable this behavior with link_external = False.
+
+    # refresh_compile_commands does not work with --experimental_convenience_symlinks=ignore.
+        # For these workspaces, you can use absolute paths to the bazel build artifacts by setting rewrite_bazel_paths = True.
 ```
 """
 
@@ -63,6 +72,9 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        update_gitignore = True,
+        link_external = True,
+        rewrite_bazel_paths = False,
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -88,7 +100,16 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
+    _expand_template(
+        name = script_name,
+        labels_to_flags = targets,
+        exclude_headers = exclude_headers,
+        exclude_external_sources = exclude_external_sources,
+        update_gitignore = update_gitignore,
+        link_external = link_external,
+        rewrite_bazel_paths = rewrite_bazel_paths,
+        **kwargs
+    )
 
     # Combine them so the wrapper calls the main script
     native.py_binary(
@@ -115,6 +136,9 @@ def _expand_template_impl(ctx):
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
+            "{update_gitignore}": repr(ctx.attr.update_gitignore),
+            "{link_external}": repr(ctx.attr.link_external),
+            "{rewrite_bazel_paths}": repr(ctx.attr.rewrite_bazel_paths),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -124,6 +148,9 @@ _expand_template = rule(
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
+        "update_gitignore": attr.bool(default = True),
+        "link_external": attr.bool(default = True),
+        "rewrite_bazel_paths": attr.bool(default = False),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
         # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
