@@ -792,10 +792,10 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
         if skip_next:
             skip_next = False
             continue
-        if arg in _nvcc_flags_no_arg:
+        if arg in _nvcc_flags_to_skip_no_arg:
             continue
         skip = False
-        for flag_with_arg in _nvcc_flags_with_arg:
+        for flag_with_arg in _nvcc_flags_to_skip_with_arg:
             if arg == flag_with_arg:
                 skip = True
                 skip_next = True
@@ -834,7 +834,7 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
 
     return new_compile_args
 # Generated via nvcc_clang_diff.py. Consider making use of it if you need to update this!
-_nvcc_flags_no_arg = {
+_nvcc_flags_to_skip_no_arg = {
     # long name, short name
     '--Wdefault-stream-launch', '-Wdefault-stream-launch',
     '--Wext-lambda-captures-this', '-Wext-lambda-captures-this',
@@ -890,7 +890,7 @@ _nvcc_flags_no_arg = {
     '--use-local-env', '-use-local-env',
     '--use_fast_math', '-use_fast_math',
 }
-_nvcc_flags_with_arg = {
+_nvcc_flags_to_skip_with_arg = {
     # long name, short name
     '--archive-options', '-Xarchive',
     '--archiver-binary', '-arbin',
