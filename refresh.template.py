@@ -794,10 +794,6 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
             continue
         if arg in _nvcc_flags_no_arg:
             continue
-        rewrite_to = _nvcc_rewrite_flags.get(arg)
-        if rewrite_to:
-            new_compile_args.append(rewrite_to)
-            continue
         skip = False
         for flag_with_arg in _nvcc_flags_with_arg:
             if arg == flag_with_arg:
@@ -810,6 +806,11 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
                 skip = True
                 break
         if skip:
+            continue
+
+        rewrite_to = _nvcc_rewrite_flags.get(arg)
+        if rewrite_to:
+            new_compile_args.append(rewrite_to)
             continue
 
         if ',' in arg: # Unpack NVCC's (fairly unique) comma-separated list format
