@@ -804,7 +804,7 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
                 skip = True
                 skip_next = True
                 break
-            if len(flag_with_arg) > 2:  # NVCC allows all one character flags to have no separator before their arguments
+            if len(flag_with_arg) > 2:  # NVCC allows all one-character flags to have no = or space separator before their arguments
                 flag_with_arg += '='
             if arg.startswith(flag_with_arg):
                 skip = True
@@ -812,7 +812,21 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
         if skip:
             continue
 
-        new_compile_args.append(arg)
+        if ',' in arg: # Unpack NVCC's (fairly unique) comma-separated list format
+            if arg.startswith('-'):
+                option, did_partition, remainder  = arg.partition('=')
+                if did_partition:
+                    arg = remainder
+                else: # Must have been a one-character flag to have no = separator
+                    option = arg[:2]
+                    arg = arg[2:]
+            else:
+                option = new_compile_args.pop()
+            for list_item in arg.split(','):
+                new_compile_args.append(option)
+                new_compile_args.append(list_item)
+        else:
+            new_compile_args.append(arg)
 
     return new_compile_args
 # Generated via nvcc_clang_diff.py. Consider making use of it if you need to update this!
