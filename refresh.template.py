@@ -804,8 +804,9 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
                 skip = True
                 skip_next = True
                 break
-            with_eq = flag_with_arg + "="
-            if arg.startswith(with_eq):
+            if len(flag_with_arg) > 2:  # NVCC allows all one character flags to have no separator before their arguments
+                flag_with_arg += '='
+            if arg.startswith(flag_with_arg):
                 skip = True
                 break
         if skip:
