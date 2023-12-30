@@ -808,10 +808,13 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
         if skip:
             continue
 
-        rewrite_to = _nvcc_rewrite_flags.get(arg)
+        option, did_partition, remainder  = arg.partition('=')
+        rewrite_to = _nvcc_rewrite_flags.get(option) # Handles =value. Note: Note assumes no rewritten args are one character with a value that might take the -I<value> short form. <TAG_REWRITE>
         if rewrite_to:
-            new_compile_args.append(rewrite_to)
-            continue
+            if did_partition:
+                arg = rewrite_to + '=' + remainder
+            else:
+                arg = rewrite_to
 
         if ',' in arg: # Unpack NVCC's (fairly unique) comma-separated list format
             if arg.startswith('-'):
@@ -932,6 +935,7 @@ _nvcc_flags_with_arg = {
 }
 _nvcc_rewrite_flags = {
     # NVCC flag: clang flag
+    # Note: If you rewrite a one-character flag, you'll need to change the code by <TAG_REWRITE>.
     '--Werror': '-Werror',
     '--Wno-deprecated-declarations': '-Wno-deprecated-declarations',
     '--Wreorder': '-Wreorder',
