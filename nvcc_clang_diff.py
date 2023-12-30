@@ -2,7 +2,7 @@
 
 """Generates a set of flags that are accepted by nvcc but not clang.
 
-These should be stripped or rewritten before being stored in compile_commands.json.
+Useful for figuring out what nvcc argument patching is needed for acceptance by clangd, if we ever need to update that logic in refresh.template.py
 """
 
 import dataclasses
