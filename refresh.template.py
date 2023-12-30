@@ -819,7 +819,7 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
         if ',' in arg: # Unpack NVCC's (fairly unique) comma-separated list format
             if arg.startswith('-'):
                 option, did_partition, remainder  = arg.partition('=')
-                if did_partition:
+                if did_partition and not arg.startswith('-D'): # -D has a special -D=name=value case.
                     arg = remainder
                 else: # Must have been a one-character flag to have no = separator
                     option = arg[:2]
