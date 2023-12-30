@@ -785,7 +785,7 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
 
     new_compile_args = [compile_args[0],
                         # Make clangd's behavior closer to nvcc's.
-                        # I think this might become the default in clangd 17: https://reviews.llvm.org/D151359
+                        # Will become the default in clangd 17: https://github.com/llvm/llvm-project/commit/0ad5d40fa19f27db0e5f999d0e17b0c18b811019
                         '-Xclang', '-fcuda-allow-variadic-functions']
     skip_next = True # skip the compile_args[0] which we added above
     for arg in compile_args:
