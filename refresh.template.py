@@ -858,7 +858,7 @@ _nvcc_flags_no_arg = {
     '--fatbin', '-fatbin',
     '--forward-unknown-opts', '-forward-unknown-opts',
     '--forward-unknown-to-host-compiler', '-forward-unknown-to-host-compiler',
-    '--forward-unknown-to-host-linker', '-forward-unknown-to-host-linker',
+    '--forward-unknown-to-host-linker', '-forward-unknown-to-host-linker', # Not handled quite right--but very hard to handle fully. If patching, consider adding a special case prepending '-Wl,', making sure to not trigger the list expander.
     '--gen-opt-lto', '-gen-opt-lto',
     '--generate-line-info', '-lineinfo',
     '--host-relocatable-link', '-r',
