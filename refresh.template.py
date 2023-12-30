@@ -814,7 +814,7 @@ def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
         new_compile_args.append(arg)
 
     return new_compile_args
-# Generated script nvcc_clang_diff.py
+# Generated via nvcc_clang_diff.py. Consider making use of it if you need to update this!
 _nvcc_flags_no_arg = {
     # long name, short name
     '--Wdefault-stream-launch', '-Wdefault-stream-launch',
