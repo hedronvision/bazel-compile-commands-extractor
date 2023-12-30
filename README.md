@@ -227,10 +227,6 @@ On the other hand, if you've set things up and they're working well, we'd still 
 
 We'd also love to work with you on contributions and improvements, of course! Development setup is easy, not onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md) The codebase is super clean and friendly. Stepping into the code is a fun and efficient way to get the improvements you want.
 
-### rules_cuda
-
-This should mostly work with [rules_cuda](https://bazel-contrib.github.io/rules_cuda) using NVCC, but `clangd` may complain if there is an NVCC flag that is not known to clang and not handled by the compile commands generator. In that case please open a PR to have the generator handle that flag, or you can suppress the error with a clangd config.
-
 ---
 
 ## Other Projects Likely Of Interest
