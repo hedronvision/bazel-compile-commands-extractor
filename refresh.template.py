@@ -227,7 +227,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
         if not arg.startswith('-fsanitize'))
 
     header_cmd = list(header_cmd)
-    # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files
+    # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files--whose paths may be wrong!
     # Relies on our having made the workspace directory simulate a complete version of the execroot with //external symlink
     deps_args = ['--dependencies', '--print-missing-file-dependencies']
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#nvcc-command-options
@@ -974,7 +974,7 @@ def _get_cpp_command_for_files(compile_action):
 def _convert_compile_commands(aquery_output):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
-    Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) compile actions for a given build.
+    Input: jsonproto output from aquery, pre-filtered to (Objective-)C(++) and CUDA compile actions for a given build.
     Yields: Corresponding entries for a compile_commands.json, with commas after each entry, describing all ways every file is being compiled.
         Also includes one entry per header, describing one way it is compiled (to work around https://github.com/clangd/clangd/issues/123).
 
