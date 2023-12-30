@@ -181,8 +181,10 @@ def _get_cached_adjusted_modified_time(path: str):
 # Roughly 1 year into the future. This is safely below bazel's 10 year margin, but large enough that no sane normal file should be past this.
 BAZEL_INTERNAL_SOURCE_CUTOFF = time.time() + 60*60*24*365
 
+
 def _is_nvcc(path: str):
     return os.path.basename(path).startswith('nvcc')
+
 
 def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
