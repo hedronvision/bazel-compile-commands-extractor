@@ -1062,11 +1062,11 @@ def _get_cpp_command_for_files(compile_action):
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
-    # Patch command by platform
-    compile_action.arguments = _all_platform_patch(compile_action.arguments)
+    # Patch command by platform, revealing any hidden arguments.
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
     compile_action.arguments = _emscripten_platform_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
+    compile_action.arguments = _all_platform_patch(compile_action.arguments)
 
     source_files, header_files = _get_files(compile_action)
 
