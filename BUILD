@@ -25,4 +25,13 @@ filegroup(
 # Implementation:
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
-exports_files(["refresh.template.py", "check_python_version.template.py"])  # For implicit use by the refresh_compile_commands macro, not direct use.
+exports_files(["refresh.template.py", "check_python_version.template.py", "print_args.py"])  # For implicit use by the refresh_compile_commands macro, not direct use.
+
+filegroup(
+    name = "print_args",
+    srcs = select({
+        "@bazel_tools//src/conditions:host_windows": [":print_args.bat"],
+        "//conditions:default": [":print_args.sh"],
+    }),
+    visibility = ["//visibility:public"],
+)

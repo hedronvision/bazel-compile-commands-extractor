@@ -98,6 +98,7 @@ def refresh_compile_commands(
             version_checker_script_name,
             script_name,
         ],
+        data = ["@hedron_compile_commands//:print_args"],
         imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
         **kwargs
     )
@@ -115,6 +116,8 @@ def _expand_template_impl(ctx):
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
+            "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
+            "{print_args_py}": repr(ctx.file._print_args_py.path),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -125,6 +128,8 @@ _expand_template = rule(
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
+        "_print_args_executable": attr.label(executable = True, allow_single_file = True, cfg = "target", default = "print_args"),
+        "_print_args_py": attr.label(allow_single_file = True, default = "print_args.py"),
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
         # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
