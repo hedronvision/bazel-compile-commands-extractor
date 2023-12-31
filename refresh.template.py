@@ -252,7 +252,8 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     if is_nvcc:
         header_cmd += ['--generate-dependencies']
     else:
-        header_cmd += ['--dependencies', '--print-missing-file-dependencies'] # Allows us to continue on past missing (generated) files--whose paths may be wrong (listed as written in the include)!
+        # -M rather than --dependencies allows us to support the zig compiler. See https://github.com/hedronvision/bazel-compile-commands-extractor/pull/130
+        header_cmd += ['-M', '--print-missing-file-dependencies'] # Allows us to continue on past missing (generated) files--whose paths may be wrong (listed as written in the include)!
 
     header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed( # Note: gcc/clang can be run from Windows, too.
         header_cmd,
