@@ -775,6 +775,12 @@ def _all_platform_patch(compile_args: typing.List[str]):
     # Seems to have disappeared when we switched to aquery from action_listeners, but we'll leave it in until the bug is patched in case we start using C++ modules
     compile_args = (arg for arg in compile_args if not arg.startswith('-fmodules-cache-path=bazel-out/'))
 
+    # We're transfering the commands as though they were compiled in place in the workspace; no need for prefix maps, so we'll remove them. This eliminates some postentially confusing Bazel variables, though I think clangd just ignores them anyway.
+    # Some example:
+    # -fdebug-prefix-map=__BAZEL_EXECUTION_ROOT__=.
+    # -fdebug-prefix-map=__BAZEL_XCODE_DEVELOPER_DIR__=/PLACEHOLDER_DEVELOPER_DIR
+    compile_args = (arg for arg in compile_args if not arg.startswith('-fdebug-prefix-map'))
+
     # When Bazel builds with gcc it adds -fno-canonical-system-headers to the command line, which clang tooling chokes on, since it does not understand this flag.
     # We'll remove this flag, until such time as clangd & clang-tidy gracefully ignore it. Tracking issues: https://github.com/clangd/clangd/issues/1004 and https://github.com/llvm/llvm-project/issues/61699.
     # For more context see: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/21
