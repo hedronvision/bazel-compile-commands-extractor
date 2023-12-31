@@ -131,6 +131,9 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     A dependency file can be generated with the `-M`/`--dependencies` flag or its friends.
     See https://clang.llvm.org/docs/ClangCommandLineReference.html#dependency-file-generation for more details.
     """
+    if not d_file_content: # There was an error generating.
+        return set()
+
     # When reading file content as text with universal newlines mode enabled (the default), Python converts OS-specific line endings to '\n' (see https://docs.python.org/3/library/functions.html#open-newline-parameter for the thrilling details).
     # This function takes an arbitrary string, so we also ensure no `\r` characters have snuck through, because that's almost certainly an upstream error.
     assert '\r' not in d_file_content, "Something went wrong in makefile parsing to get headers. Dependency file content should not contain literal '\r' characters. Output:\n" + repr(d_file_content)
@@ -155,8 +158,26 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
 
 
 @functools.lru_cache(maxsize=None)
+def _get_cached_modified_time(path: str):
+    """Returns 0 if the file doesn't exist.
+
+    Without the cache, most of our runtime in the cached case is `stat`'ing the same headers repeatedly.
+    """
+    try:
+        return os.path.getmtime(path)
+    except OSError:  # The file doesn't exist or is inaccessible.
+        # For our purposes, this means we don't have a newer version, so we'll return a very old time that'll always qualify the cache as fresh in a comparison. There are two cases here:
+            # (1) Somehow it wasn't generated in the build that created the depfile. We therefore won't get any fresher by building, so we'll treat that as good enough; or
+            # (2) It has been deleted since we last cached, in which case we'd rather use the cached version if it's otherwise fresh.
+        return 0
+
+
+def _get_cached_file_exists(path: str):
+    return _get_cached_modified_time(path) != 0
+
+
 def _get_cached_adjusted_modified_time(path: str):
-    """Get (and cache!) the modified time of a file, slightly adjusted for easy comparison.
+    """Get the modified time of a file, slightly adjusted for easy comparison.
 
     This is primarily intended to check whether header include caches are fresh.
 
@@ -164,14 +185,9 @@ def _get_cached_adjusted_modified_time(path: str):
     For bazel's internal sources, which have timestamps 10 years in the future, also return 0.
 
     Without the cache, most of our runtime in the cached case is `stat`'ing the same headers repeatedly.
+    Cache shared with _get_cached_modified_time
     """
-    try:
-        mtime = os.path.getmtime(path)
-    except OSError:  # The file doesn't exist or is inaccessible.
-        # For our purposes, this means we don't have a newer version, so we'll return a very old time that'll always qualify the cache as fresh in a comparison. There are two cases here:
-            # (1) Somehow it wasn't generated in the build that created the depfile. We therefore won't get any fresher by building, so we'll treat that as good enough; or
-            # (2) It has been deleted since we last cached, in which case we'd rather use the cached version if it's otherwise fresh.
-        return 0
+    mtime = _get_cached_modified_time(path)
 
     # Bazel internal sources have timestamps 10 years in the future as part of a mechanism to detect and prevent modification, so we'll similarly ignore those, since they shouldn't be changing.
     if mtime > BAZEL_INTERNAL_SOURCE_CUTOFF:
@@ -209,7 +225,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
                     # Check freshness of dep file by making sure none of the files in it have been modified since its creation.
                     if (_get_cached_adjusted_modified_time(source_path) <= dep_file_last_modified
                         and all(_get_cached_adjusted_modified_time(header_path) <= dep_file_last_modified for header_path in headers)):
-                        return headers # Fresh cache! exit early.
+                        return headers, True # Fresh cache! exit early. Still put in the Hedron outer cache bc we're willing to hit stale if we're unable to get new headers.
                 break
 
     # Strip out existing dependency file generation that could interfere with ours.
@@ -228,14 +244,15 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     header_cmd = (arg for arg in header_cmd
         if not arg.startswith('-fsanitize'))
 
-    header_cmd = list(header_cmd)
-    # Dump system and user headers to stdout...in makefile format, tolerating missing (generated) files--whose paths may be wrong!
+    # Dump system and user headers to stdout...in makefile format.
     # Relies on our having made the workspace directory simulate a complete version of the execroot with //external symlink
-    deps_args = ['--dependencies', '--print-missing-file-dependencies']
+    header_cmd = list(header_cmd)
+    is_nvcc = _is_nvcc(header_cmd[0])
     # https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#nvcc-command-options
-    if _is_nvcc(header_cmd[0]):
-        deps_args = ['--generate-dependencies']
-    header_cmd += deps_args
+    if is_nvcc:
+        header_cmd += ['--generate-dependencies']
+    else:
+        header_cmd += ['--dependencies', '--print-missing-file-dependencies'] # Allows us to continue on past missing (generated) files--whose paths may be wrong (listed as written in the include)!
 
     header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed( # Note: gcc/clang can be run from Windows, too.
         header_cmd,
@@ -251,11 +268,18 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
         _print_header_finding_warning_once()
         print(header_search_process.stderr, file=sys.stderr, end='') # Stderr captured and dumped atomically to avoid interlaced output.
 
-    if not header_search_process.stdout: # Worst case, we couldn't get the headers,
-        return set()
-    # But often, we can get the headers, despite the error.
+    headers = _parse_headers_from_makefile_deps(header_search_process.stdout)
 
-    return _parse_headers_from_makefile_deps(header_search_process.stdout)
+    # Can't cache when headers are missing.
+    # Why? We'd wrongly get a subset of the headers and we might wrongly think the cache is still fresh because we wouldn't know that the formerly missing header had been generated.
+    if is_nvcc:
+        should_cache = bool(header_search_process.stdout)  # Without --print-missing-file-dependencies, nothing is written if a file isn't found. (Something is still written if no headers are included.) This avoids hardcoding the error message. Note that some errors, like that for #bad_directive are okay to ignore! We'll know the cache isn't fresh when the user changes the file.
+    else: # Handle '--print-missing-file-dependencies'
+        num_headers_output = len(headers)
+        headers = {header for header in headers if _get_cached_file_exists(header)}  # We can't filter on headers starting with bazel-out because missing headers don't have complete paths; they just listed as #included
+        should_cache = len(headers) == num_headers_output
+
+    return headers, should_cache
 
 
 @functools.lru_cache(maxsize=None)
@@ -435,7 +459,8 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
         _print_header_finding_warning_once()
         print('\n'.join(error_lines), file=sys.stderr)
 
-    return headers
+    should_cache = all('fatal error C1083:' not in error_line for error_line in error_lines)  # Error code for file not found (when trying to include). Without this, we'd wrongly get a subset of the headers and we might wrongly think the cache is still fresh because we wouldn't know that the formerly missing header had been generated.
+    return headers, should_cache
 
 
 def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
@@ -510,13 +535,14 @@ def _get_headers(compile_action, source_path: str):
     Continuing gracefully...""")
 
     # Check for a fresh cache of headers
+    cached_headers = None
     if output_file:
         cache_file_path = output_file + ".hedron.compile-commands.headers" # Embed our cache in bazel's
         if os.path.isfile(cache_file_path):
             cache_last_modified = os.path.getmtime(cache_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
             try:
                 with open(cache_file_path) as cache_file:
-                    action_key, headers = json.load(cache_file)
+                    action_key, cached_headers = json.load(cache_file)
             except json.JSONDecodeError:
                 # Corrupted cache, which can happen if, for example, the user kills the program, since writes aren't atomic.
                 # But if it is the result of a bug, we want to print it before it's overwritten, so it can be reported
@@ -534,11 +560,11 @@ def _get_headers(compile_action, source_path: str):
                     # And we also need to check that there aren't newer versions of the files
                 if (action_key == compile_action.actionKey
                     and _get_cached_adjusted_modified_time(source_path) <= cache_last_modified
-                    and all(_get_cached_adjusted_modified_time(header_path) <= cache_last_modified for header_path in headers)):
-                    return set(headers)
+                    and all(_get_cached_adjusted_modified_time(header_path) <= cache_last_modified for header_path in cached_headers)):
+                    return set(cached_headers)
 
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
-        headers = _get_headers_msvc(compile_action.arguments, source_path)
+        headers, should_cache = _get_headers_msvc(compile_action.arguments, source_path)
     else:
         # Emscripten is tricky. There isn't an easy way to make it emcc run without lots of environment variables.
         # So...rather than doing our usual script unwrapping, we just swap in clang/gcc and use that to get headers, knowing that they'll accept the same argument format.
@@ -551,13 +577,15 @@ def _get_headers(compile_action, source_path: str):
             if not alternate_compiler: return set() # Skip getting headers.
             args = args.copy()
             args[0] = alternate_compiler
-        headers = _get_headers_gcc(args, source_path, compile_action.actionKey)
+        headers, should_cache = _get_headers_gcc(args, source_path, compile_action.actionKey)
 
     # Cache for future use
-    if output_file:
+    if output_file and should_cache:
         os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
         with open(cache_file_path, 'w') as cache_file:
             json.dump((compile_action.actionKey, list(headers)), cache_file)
+    elif not headers and cached_headers: # If we failed to get headers, we'll fall back on a stale cache.
+        headers = set(cached_headers)
 
     if {exclude_headers} == "external":
         headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
