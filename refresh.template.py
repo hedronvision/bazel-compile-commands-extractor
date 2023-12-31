@@ -763,7 +763,7 @@ def _emscripten_platform_patch(compile_args: typing.List[str]):
     This function has fixes specific to Emscripten platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not
     """
     emcc_driver = pathlib.Path(compile_args[0])
-    if emcc_driver.name != 'emcc.sh' and emcc_driver.name != 'emcc.bat':
+    if not emcc_driver.name.startswith('emcc'):
         return compile_args
 
     workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
