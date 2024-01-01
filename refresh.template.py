@@ -771,7 +771,8 @@ def _emscripten_platform_patch(compile_args: typing.List[str]):
     assert sysroot, f'Emscripten sysroot not detected in CMD: {compile_args}'
 
     def get_workspace_root(path_from_execroot: pathlib.PurePath):
-        assert path_from_execroot.parts[0] == 'external'
+        if path_from_execroot.parts[0] != 'external':
+            return pathlib.PurePath('.')
         return pathlib.PurePath('external') / path_from_execroot.parts[1]
 
     environment = {
