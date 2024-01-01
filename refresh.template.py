@@ -780,7 +780,6 @@ def _emscripten_platform_patch(compile_args: typing.List[str]):
         'EM_CONFIG_PATH': str(get_workspace_root(emcc_driver) / 'emscripten_toolchain' / 'emscripten_config'),
         'EMCC_SKIP_SANITY_CHECK': '1',
         'EM_COMPILER_WRAPPER': str(pathlib.PurePath({print_args_executable})),
-        'HEDRON_COMPILE_COMMANDS_PRINT_ARGS_PY': str(pathlib.PurePath({print_args_py})),
         'PATH': os.environ['PATH'],
     }
 
