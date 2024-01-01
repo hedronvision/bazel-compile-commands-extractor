@@ -786,7 +786,9 @@ def _emscripten_platform_patch(compile_args: typing.List[str]):
 
     # We run the emcc process with the environment variable EM_COMPILER_WRAPPER to intercept the command line arguments passed to `clang`.
     emcc_process = subprocess.run(
-        [emcc_driver] + compile_args[1:],
+        # On windows, it fails to spawn the subprocess when the path uses forward slashes as a separator.
+        # Here, we convert emcc driver path to use the native path separator.
+        [str(emcc_driver)] + compile_args[1:],
         # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
