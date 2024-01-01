@@ -786,7 +786,7 @@ def _emscripten_platform_patch(compile_args: typing.List[str]):
 
     # We run the emcc process with the environment variable EM_COMPILER_WRAPPER to intercept the command line arguments passed to `clang`.
     emcc_process = subprocess.run(
-        compile_args,
+        [emcc_driver] + compile_args[1:],
         # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
