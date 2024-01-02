@@ -29,6 +29,6 @@ exports_files(["refresh.template.py", "check_python_version.template.py"])  # Fo
 
 cc_binary(
     name = "print_args",
-    srcs = ["print_args.cc"],
+    srcs = ["print_args.cpp"],
     visibility = ["//visibility:public"],
 )
