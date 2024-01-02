@@ -745,19 +745,7 @@ def _apple_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _get_sysroot(args: typing.List[str]):
-    for idx, arg in enumerate(args):
-        if arg == '--sysroot' or arg == '-isysroot':
-            if idx + 1 < len(args):
-                return pathlib.PurePath(args[idx + 1])
-        elif arg.startswith('--sysroot='):
-            return pathlib.PurePath(arg[len('--sysroot='):])
-        elif arg.startswith('-isysroot'):
-            return pathlib.PurePath(arg[len('-isysroot'):])
-    return None
-
-
-def _emscripten_platform_patch(compile_args: typing.List[str]):
+def _emscripten_platform_patch(compile_args: typing.List[str], action_env: typing.Dict[str, str]):
     """De-Bazel the command into something clangd can parse.
 
     This function has fixes specific to Emscripten platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not
@@ -767,22 +755,13 @@ def _emscripten_platform_patch(compile_args: typing.List[str]):
         return compile_args
 
     workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
-    sysroot = _get_sysroot(compile_args)
-    assert sysroot, f'Emscripten sysroot not detected in CMD: {compile_args}'
 
-    def get_workspace_root(path_from_execroot: pathlib.PurePath):
-        if path_from_execroot.parts[0] != 'external':
-            return pathlib.PurePath('.')
-        return pathlib.PurePath('external') / path_from_execroot.parts[1]
-
-    environment = {
-        'EXT_BUILD_ROOT': str(workspace_absolute),
-        'EM_BIN_PATH': str(get_workspace_root(sysroot)),
-        'EM_CONFIG_PATH': str(get_workspace_root(emcc_driver) / 'emscripten_toolchain' / 'emscripten_config'),
-        'EMCC_SKIP_SANITY_CHECK': '1',
-        'EM_COMPILER_WRAPPER': str(pathlib.PurePath({print_args_executable})),
-        'PATH': os.environ['PATH'],
-    }
+    environment = dict(action_env)
+    environment['EXT_BUILD_ROOT'] = str(workspace_absolute)
+    environment['EMCC_SKIP_SANITY_CHECK'] = '1'
+    environment['EM_COMPILER_WRAPPER'] = str(pathlib.PurePath({print_args_executable}))
+    if 'PATH' not in environment:
+        environment['PATH'] = os.environ['PATH']
 
     # We run the emcc process with the environment variable EM_COMPILER_WRAPPER to intercept the command line arguments passed to `clang`.
     emcc_process = subprocess.run(
@@ -1064,9 +1043,14 @@ def _get_cpp_command_for_files(compile_action):
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
+    env_pairs = getattr(compile_action, 'environmentVariables', [])
+    env = {}
+    for pair in env_pairs:
+        env[pair.key] = pair.value
+
     # Patch command by platform, revealing any hidden arguments.
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
-    compile_action.arguments = _emscripten_platform_patch(compile_action.arguments)
+    compile_action.arguments = _emscripten_platform_patch(compile_action.arguments, action_env=env)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
 
