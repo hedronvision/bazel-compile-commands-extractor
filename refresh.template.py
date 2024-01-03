@@ -745,18 +745,18 @@ def _apple_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _emscripten_platform_patch(compile_args: typing.List[str], action_env: typing.Dict[str, str]):
+def _emscripten_platform_patch(compile_action):
     """De-Bazel the command into something clangd can parse.
 
     This function has fixes specific to Emscripten platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not
     """
-    emcc_driver = pathlib.Path(compile_args[0])
+    emcc_driver = pathlib.Path(compile_action.arguments[0])
     if not emcc_driver.name.startswith('emcc'):
-        return compile_args
+        return compile_action.arguments
 
     workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
 
-    environment = dict(action_env)
+    environment = compile_action.environmentVariables.copy()
     environment['EXT_BUILD_ROOT'] = str(workspace_absolute)
     environment['EMCC_SKIP_SANITY_CHECK'] = '1'
     environment['EM_COMPILER_WRAPPER'] = str(pathlib.PurePath({print_args_executable}))
@@ -765,9 +765,9 @@ def _emscripten_platform_patch(compile_args: typing.List[str], action_env: typin
 
     # We run the emcc process with the environment variable EM_COMPILER_WRAPPER to intercept the command line arguments passed to `clang`.
     emcc_process = subprocess.run(
-        # On windows, it fails to spawn the subprocess when the path uses forward slashes as a separator.
+        # On Windows, it fails to spawn the subprocess when the path uses forward slashes as a separator.
         # Here, we convert emcc driver path to use the native path separator.
-        [str(emcc_driver)] + compile_args[1:],
+        [str(emcc_driver)] + compile_action.arguments[1:],
         # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1043,14 +1043,12 @@ def _get_cpp_command_for_files(compile_action):
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
-    env_pairs = getattr(compile_action, 'environmentVariables', [])
-    env = {}
-    for pair in env_pairs:
-        env[pair.key] = pair.value
+    # Condense aquery's environment variables into a dictionary, the format you might expect.
+    compile_action.environmentVariables = {pair.key: pair.value for pair in getattr(compile_action, 'environmentVariables', [])}
 
     # Patch command by platform, revealing any hidden arguments.
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
-    compile_action.arguments = _emscripten_platform_patch(compile_action.arguments, action_env=env)
+    compile_action.arguments = _emscripten_platform_patch(compile_action)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
 
