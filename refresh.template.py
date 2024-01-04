@@ -283,17 +283,6 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     return headers, should_cache
 
 
-@functools.lru_cache(maxsize=None)
-def _get_clang_or_gcc():
-    """Returns clang or gcc, if you have one of them on your path."""
-    if shutil.which('clang'):
-        return 'clang'
-    elif shutil.which('gcc'):
-        return 'gcc'
-    else:
-        return None
-
-
 def windows_list2cmdline(seq):
     """
     Copied from list2cmdline in https://github.com/python/cpython/blob/main/Lib/subprocess.py because we need it but it's not exported as part of the public API.
@@ -567,18 +556,7 @@ def _get_headers(compile_action, source_path: str):
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers, should_cache = _get_headers_msvc(compile_action.arguments, source_path)
     else:
-        # Emscripten is tricky. There isn't an easy way to make it emcc run without lots of environment variables.
-        # So...rather than doing our usual script unwrapping, we just swap in clang/gcc and use that to get headers, knowing that they'll accept the same argument format.
-            # You can unwrap emcc.sh to emcc.py via next(pathlib.Path('external').glob('emscripten_bin_*/emscripten/emcc.py')).as_posix()
-            # But then the underlying emcc needs a configuration file that itself depends on lots of environment variables.
-            # If we ever pick this back up, note that you can supply that config via compile_args += ["--em-config", "external/emsdk/emscripten_toolchain/emscripten_config"]
-        args = compile_action.arguments
-        if args[0].endswith('emcc.sh') or args[0].endswith('emcc.bat'):
-            alternate_compiler = _get_clang_or_gcc()
-            if not alternate_compiler: return set() # Skip getting headers.
-            args = args.copy()
-            args[0] = alternate_compiler
-        headers, should_cache = _get_headers_gcc(args, source_path, compile_action.actionKey)
+        headers, should_cache = _get_headers_gcc(compile_action.arguments, source_path, compile_action.actionKey)
 
     # Cache for future use
     if output_file and should_cache:
@@ -765,6 +743,54 @@ def _apple_platform_patch(compile_args: typing.List[str]):
         compile_args = [arg.replace('__BAZEL_XCODE_SDKROOT__', _get_apple_SDKROOT(apple_platform)) for arg in compile_args]
 
     return compile_args
+
+
+def _emscripten_platform_patch(compile_action):
+    """De-Bazel the command into something clangd can parse.
+
+    This function has fixes specific to Emscripten platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not
+    """
+    emcc_driver = pathlib.Path(compile_action.arguments[0])
+    if not emcc_driver.name.startswith('emcc'):
+        return compile_action.arguments
+
+    workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+
+    environment = compile_action.environmentVariables.copy()
+    environment['EXT_BUILD_ROOT'] = str(workspace_absolute)
+    environment['EMCC_SKIP_SANITY_CHECK'] = '1'
+    environment['EM_COMPILER_WRAPPER'] = str(pathlib.PurePath({print_args_executable}))
+    if 'PATH' not in environment:
+        environment['PATH'] = os.environ['PATH']
+
+    # We run the emcc process with the environment variable EM_COMPILER_WRAPPER to intercept the command line arguments passed to `clang`.
+    emcc_process = subprocess.run(
+        # On Windows, it fails to spawn the subprocess when the path uses forward slashes as a separator.
+        # Here, we convert emcc driver path to use the native path separator.
+        [str(emcc_driver)] + compile_action.arguments[1:],
+        # MIN_PY=3.7: Replace PIPEs with capture_output.
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+        encoding=locale.getpreferredencoding(),
+        check=False, # We explicitly ignore errors and carry on.
+    )
+
+    lines = emcc_process.stdout.splitlines()
+
+    # Parse the arguments from the output of the emcc process.
+    if BEGIN_ARGS_MARKER in lines:
+        begin_args_idx = lines.index(BEGIN_ARGS_MARKER)
+        end_args_idx = lines.index(END_ARGS_MARKER, begin_args_idx + 1)
+        args = lines[begin_args_idx + 1:end_args_idx]
+        clang_driver = pathlib.PurePath(args[0])
+        if _is_relative_to(clang_driver, workspace_absolute):
+            args[0] = clang_driver.relative_to(workspace_absolute).as_posix()
+        return args
+
+    assert False, f'Failed to parse emcc output: {emcc_process.stderr}'
+BEGIN_ARGS_MARKER = '===HEDRON_COMPILE_COMMANDS_BEGIN_ARGS==='
+END_ARGS_MARKER = '===HEDRON_COMPILE_COMMANDS_END_ARGS==='
 
 
 def _all_platform_patch(compile_args: typing.List[str]):
@@ -1023,10 +1049,14 @@ def _get_cpp_command_for_files(compile_action):
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
-    # Patch command by platform
-    compile_action.arguments = _all_platform_patch(compile_action.arguments)
+    # Condense aquery's environment variables into a dictionary, the format you might expect.
+    compile_action.environmentVariables = {pair.key: pair.value for pair in getattr(compile_action, 'environmentVariables', [])}
+
+    # Patch command by platform, revealing any hidden arguments.
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
+    compile_action.arguments = _emscripten_platform_patch(compile_action)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
+    compile_action.arguments = _all_platform_patch(compile_action.arguments)
 
     source_files, header_files = _get_files(compile_action)
 

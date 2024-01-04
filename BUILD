@@ -26,3 +26,9 @@ filegroup(
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
 exports_files(["refresh.template.py", "check_python_version.template.py"])  # For implicit use by the refresh_compile_commands macro, not direct use.
+
+cc_binary(
+    name = "print_args",
+    srcs = ["print_args.cpp"],
+    visibility = ["//visibility:public"],
+)
