@@ -15,7 +15,10 @@ filegroup(
     name = "bzl_srcs_for_stardoc",
     visibility = ["//visibility:public"],
     srcs = glob(["**/*.bzl"]) + [
-        "@bazel_tools//tools:bzl_srcs"
+        "@bazel_tools//tools:bzl_srcs",
+        "@hedron_compile_commands_pip//:requirements.bzl",
+        "@python_3_11//:defs.bzl",
+        "@rules_python//:bzl",
     ],
 )
 
@@ -25,7 +28,7 @@ filegroup(
 # Implementation:
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
-exports_files(["refresh.template.py", "check_python_version.template.py"])  # For implicit use by the refresh_compile_commands macro, not direct use.
+exports_files(["refresh.template.py"])  # For implicit use by the refresh_compile_commands macro, not direct use.
 
 cc_binary(
     name = "print_args",
