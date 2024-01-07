@@ -776,6 +776,19 @@ def _apple_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
+def _get_sysroot(args: typing.List[str]):
+    """Get path to sysroot from command line arguments."""
+    for idx, arg in enumerate(args):
+        if arg == '--sysroot' or arg == '-isysroot':
+            if idx + 1 < len(args):
+                return pathlib.PurePath(args[idx + 1])
+        elif arg.startswith('--sysroot='):
+            return pathlib.PurePath(arg[len('--sysroot='):])
+        elif arg.startswith('-isysroot'):
+            return pathlib.PurePath(arg[len('-isysroot'):])
+    return None
+
+
 def _emscripten_platform_patch(compile_action):
     """De-Bazel the command into something clangd can parse.
 
@@ -786,6 +799,13 @@ def _emscripten_platform_patch(compile_action):
         return compile_action.arguments
 
     workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+    sysroot = _get_sysroot(compile_action.arguments)
+    assert sysroot, f'Emscripten sysroot not detected in CMD: {compile_action.arguments}'
+
+    def get_workspace_root(path_from_execroot: pathlib.PurePath):
+        if path_from_execroot.parts[0] != 'external':
+            return pathlib.PurePath('.')
+        return pathlib.PurePath('external') / path_from_execroot.parts[1]
 
     environment = compile_action.environmentVariables.copy()
     environment['EXT_BUILD_ROOT'] = str(workspace_absolute)
@@ -793,6 +813,10 @@ def _emscripten_platform_patch(compile_action):
     environment['EM_COMPILER_WRAPPER'] = str(pathlib.PurePath({print_args_executable}))
     if 'PATH' not in environment:
         environment['PATH'] = os.environ['PATH']
+    if 'EM_BIN_PATH' not in environment:
+        environment['EM_BIN_PATH'] = str(get_workspace_root(sysroot))
+    if 'EM_CONFIG_PATH' not in environment:
+        environment['EM_CONFIG_PATH'] = str(get_workspace_root(emcc_driver) / 'emscripten_toolchain' / 'emscripten_config')
 
     # We run the emcc process with the environment variable EM_COMPILER_WRAPPER to intercept the command line arguments passed to `clang`.
     emcc_process = subprocess.run(
