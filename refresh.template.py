@@ -11,20 +11,13 @@ Interface (after template expansion):
 """
 
 
-# This file requires python 3.6, which is enforced by check_python_version.template.py
-# 3.6 backwards compatibility required by @zhanyong-wan in https://github.com/hedronvision/bazel-compile-commands-extractor/issues/111.
-# 3.7 backwards compatibility required by @lummax in https://github.com/hedronvision/bazel-compile-commands-extractor/pull/27.
-# ^ Try to contact before upgrading.
-# When adding things could be cleaner if we had a higher minimum version, please add a comment with MIN_PY=3.<v>.
-# Similarly, when upgrading, please search for that MIN_PY= tag.
-
-
 import concurrent.futures
 import enum
-import functools  # MIN_PY=3.9: Replace `functools.lru_cache(maxsize=None)` with `functools.cache`.
+import functools
 import itertools
 import json
 import locale
+import orjson # orjson is much faster than the standard library's json module (1.9 seconds vs 6.6 seconds for a ~140 MB file). See https://github.com/hedronvision/bazel-compile-commands-extractor/pull/118
 import os
 import pathlib
 import re
@@ -35,7 +28,7 @@ import sys
 import tempfile
 import time
 import types
-import typing # MIN_PY=3.9: Switch e.g. typing.List[str] -> list[str]
+import typing
 
 
 @enum.unique
@@ -96,7 +89,7 @@ def _print_header_finding_warning_once():
 _print_header_finding_warning_once.has_logged = False
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache
 def _get_bazel_version():
     """Gets the Bazel version as a tuple of (major, minor, patch).
 
@@ -106,9 +99,7 @@ def _get_bazel_version():
     """
     bazel_version_process = subprocess.run(
         ['bazel', 'version'],
-        # MIN_PY=3.7: Replace PIPEs with capture_output.
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         encoding=locale.getpreferredencoding(),
         check=True, # Should always succeed.
     )
@@ -127,14 +118,12 @@ def _get_bazel_version():
     return tuple(int(match.group(i)) for i in range(1, 4))
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache
 def _get_bazel_cached_action_keys():
     """Gets the set of actionKeys cached in bazel-out."""
     action_cache_process = subprocess.run(
         ['bazel', 'dump', '--action_cache'],
-        # MIN_PY=3.7: Replace PIPEs with capture_output.
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         encoding=locale.getpreferredencoding(),
         check=True, # Should always succeed.
     )
@@ -188,7 +177,7 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     return set(headers)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache
 def _get_cached_modified_time(path: str):
     """Returns 0 if the file doesn't exist.
 
@@ -233,7 +222,7 @@ def _is_nvcc(path: str):
     return os.path.basename(path).startswith('nvcc')
 
 
-def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
+def _get_headers_gcc(compile_args: list[str], source_path: str, action_key: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
 
     Relatively slow. Requires running the C preprocessor if we can't hit Bazel's cache.
@@ -288,9 +277,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
 
     header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed( # Note: gcc/clang can be run from Windows, too.
         header_cmd,
-        # MIN_PY=3.7: Replace PIPEs with capture_output.
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         encoding=locale.getpreferredencoding(),
         check=False, # We explicitly ignore errors and carry on.
     )
@@ -381,7 +368,7 @@ def windows_list2cmdline(seq):
     return ''.join(result)
 
 
-def _subprocess_run_spilling_over_to_param_file_if_needed(command: typing.List[str], **kwargs):
+def _subprocess_run_spilling_over_to_param_file_if_needed(command: list[str], **kwargs):
     """Same as subprocess.run, but it handles the case where the command line length is exceeded on Windows and we need a param file."""
 
     # On non-Windows, we have to run directly via a special case.
@@ -409,7 +396,7 @@ def _subprocess_run_spilling_over_to_param_file_if_needed(command: typing.List[s
             raise
 
 
-def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
+def _get_headers_msvc(compile_args: list[str], source_path: str):
     """Gets the headers used by a particular compile command that uses msvc argument formatting (including clang-cl.)
 
     Relatively slow. Requires running the C preprocessor.
@@ -484,21 +471,11 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
     return headers, should_cache
 
 
-def _is_relative_to(sub: pathlib.PurePath, parent: pathlib.PurePath):
-    """Determine if one path is relative to another."""
-    # MIN_PY=3.9: Eliminate helper in favor of `PurePath.is_relative_to()`.
-    try:
-        sub.relative_to(parent)
-    except ValueError:
-        return False
-    return True
-
-
 def _file_is_in_main_workspace_and_not_external(file_str: str):
     file_path = pathlib.PurePath(file_str)
     if file_path.is_absolute():
         workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
-        if not _is_relative_to(file_path, workspace_absolute):
+        if not file_path.is_relative_to(workspace_absolute):
             return False
         file_path = file_path.relative_to(workspace_absolute)
     # You can now assume that the path is relative to the workspace.
@@ -506,7 +483,7 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
 
     # some/file.h, but not external/some/file.h
     # also allows for things like bazel-out/generated/file.h
-    if _is_relative_to(file_path, pathlib.PurePath("external")):
+    if file_path.is_relative_to(pathlib.PurePath("external")):
         return False
 
     # ... but, ignore files in e.g. bazel-out/<configuration>/bin/external/
@@ -563,7 +540,7 @@ def _get_headers(compile_action, source_path: str):
             cache_last_modified = os.path.getmtime(cache_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
             try:
                 with open(cache_file_path) as cache_file:
-                    action_key, cached_headers = json.load(cache_file)
+                    action_key, cached_headers = orjson.loads(cache_file.read())
             except json.JSONDecodeError:
                 # Corrupted cache, which can happen if, for example, the user kills the program, since writes aren't atomic.
                 # But if it is the result of a bug, we want to print it before it's overwritten, so it can be reported
@@ -592,8 +569,11 @@ def _get_headers(compile_action, source_path: str):
     # Cache for future use
     if output_file and should_cache:
         os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
-        with open(cache_file_path, 'w') as cache_file:
-            json.dump((compile_action.actionKey, list(headers)), cache_file)
+        with open(cache_file_path, 'wb') as cache_file:
+            cache_file.write(orjson.dumps(
+                (compile_action.actionKey, list(headers)),
+                option=orjson.OPT_INDENT_2,
+            ))
     elif not headers and cached_headers: # If we failed to get headers, we'll fall back on a stale cache.
         headers = set(cached_headers)
 
@@ -709,7 +689,7 @@ _get_files.extensions_to_language_args = { # Note that clangd fails on the --lan
 _get_files.extensions_to_language_args = {ext : flag for exts, flag in _get_files.extensions_to_language_args.items() for ext in exts} # Flatten map for easier use
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache
 def _get_apple_SDKROOT(SDK_name: str):
     """Get path to xcode-select'd root for the given OS."""
     SDKROOT_maybe_versioned =  subprocess.check_output(
@@ -727,7 +707,7 @@ def _get_apple_SDKROOT(SDK_name: str):
     # Traditionally stored in SDKROOT environment variable, but not provided by Bazel. See https://github.com/bazelbuild/bazel/issues/12852
 
 
-def _get_apple_platform(compile_args: typing.List[str]):
+def _get_apple_platform(compile_args: list[str]):
     """Figure out which Apple platform a command is for.
 
     Is the name used by Xcode in the SDK files, not the marketing name.
@@ -741,7 +721,7 @@ def _get_apple_platform(compile_args: typing.List[str]):
     return None
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache
 def _get_apple_DEVELOPER_DIR():
     """Get path to xcode-select'd developer directory."""
     return subprocess.check_output(('xcode-select', '--print-path'), encoding=locale.getpreferredencoding()).rstrip()
@@ -749,7 +729,7 @@ def _get_apple_DEVELOPER_DIR():
     # Traditionally stored in DEVELOPER_DIR environment variable, but not provided by Bazel. See https://github.com/bazelbuild/bazel/issues/12852
 
 
-def _apple_platform_patch(compile_args: typing.List[str]):
+def _apple_platform_patch(compile_args: list[str]):
     """De-Bazel the command into something clangd can parse.
 
     This function has fixes specific to Apple platforms, but you should call it on all platforms. It'll determine whether the fixes should be applied or not.
@@ -823,9 +803,7 @@ def _emscripten_platform_patch(compile_action):
         # On Windows, it fails to spawn the subprocess when the path uses forward slashes as a separator.
         # Here, we convert emcc driver path to use the native path separator.
         [str(emcc_driver)] + compile_action.arguments[1:],
-        # MIN_PY=3.7: Replace PIPEs with capture_output.
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         env=environment,
         encoding=locale.getpreferredencoding(),
         check=False, # We explicitly ignore errors and carry on.
@@ -839,7 +817,7 @@ def _emscripten_platform_patch(compile_action):
         end_args_idx = lines.index(END_ARGS_MARKER, begin_args_idx + 1)
         args = lines[begin_args_idx + 1:end_args_idx]
         clang_driver = pathlib.PurePath(args[0])
-        if _is_relative_to(clang_driver, workspace_absolute):
+        if clang_driver.is_relative_to(workspace_absolute):
             args[0] = clang_driver.relative_to(workspace_absolute).as_posix()
         return args
 
@@ -848,7 +826,7 @@ BEGIN_ARGS_MARKER = '===HEDRON_COMPILE_COMMANDS_BEGIN_ARGS==='
 END_ARGS_MARKER = '===HEDRON_COMPILE_COMMANDS_END_ARGS==='
 
 
-def _all_platform_patch(compile_args: typing.List[str]):
+def _all_platform_patch(compile_args: list[str]):
     """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
     # clangd writes module cache files to the wrong place
     # Without this fix, you get tons of module caches dumped into the VSCode root folder.
@@ -899,7 +877,7 @@ def _all_platform_patch(compile_args: typing.List[str]):
     return compile_args
 
 
-def _nvcc_patch(compile_args: typing.List[str]) -> typing.List[str]:
+def _nvcc_patch(compile_args: list[str]) -> list[str]:
     """Apply fixes to args to nvcc.
 
     Basically remove everything that's an nvcc arg that is not also a clang arg, converting what we can.
@@ -1142,9 +1120,7 @@ def _convert_compile_commands(aquery_output):
 
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
-    ) as threadpool:
+    with concurrent.futures.ThreadPoolExecutor() as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
     # Yield as compile_commands.json entries
@@ -1234,9 +1210,7 @@ def _get_commands(target: str, flags: str):
 
     aquery_process = subprocess.run(
         aquery_args,
-        # MIN_PY=3.7: Replace PIPEs with capture_output.
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         encoding=locale.getpreferredencoding(),
         check=False, # We explicitly ignore errors from `bazel aquery` and carry on.
     )
@@ -1294,20 +1268,20 @@ def _ensure_external_workspaces_link_exists():
         dest = (pathlib.Path('bazel-out').resolve()/'../../../external').resolve()
 
     # Handle problem cases where //external exists
-    if os.path.lexists(source):
+    if os.path.lexists(source): # MIN_PY=3.12: use source.exists(follow_symlinks=False), here and elsewhere.
         # Detect symlinks or Windows junctions
         # This seemed to be the cleanest way to detect both.
         # Note that os.path.islink doesn't detect junctions.
         try:
-            current_dest = os.readlink(source) # MIN_PY=3.9 source.readlink()
+            current_dest = source.readlink()
         except OSError:
             log_error(f">>> //external already exists, but it isn't a {'junction' if is_windows else 'symlink'}. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.") # Don't auto delete in case the user has something important there.
             sys.exit(1)
 
         # Normalize the path for matching
         # First, workaround a gross case where Windows readlink returns extended path, starting with \\?\, causing the match to fail
-        if is_windows and current_dest.startswith('\\\\?\\'):
-            current_dest = current_dest[4:] # MIN_PY=3.9 stripprefix
+        if is_windows:
+            current_dest = current_dest.removeprefix('\\\\?\\')
         current_dest = pathlib.Path(current_dest)
 
         if dest != current_dest:
@@ -1395,7 +1369,7 @@ def _ensure_cwd_is_workspace_root():
     os.chdir(workspace_root)
 
 
-def main():
+if __name__ == '__main__':
     _ensure_cwd_is_workspace_root()
     _ensure_gitignore_entries_exist()
     _ensure_external_workspaces_link_exists()
@@ -1416,10 +1390,8 @@ def main():
         sys.exit(1)
 
     # Chain output into compile_commands.json
-    with open('compile_commands.json', 'w') as output_file:
-        json.dump(
+    with open('compile_commands.json', 'wb') as output_file:
+        output_file.write(orjson.dumps(
             compile_command_entries,
-            output_file,
-            indent=2, # Yay, human readability!
-            check_circular=False # For speed.
-        )
+            option=orjson.OPT_INDENT_2,
+        ))

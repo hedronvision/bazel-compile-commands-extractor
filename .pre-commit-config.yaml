@@ -7,9 +7,7 @@ repos:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
     -   id: check-ast
-        exclude: ^check_python_version\.template\.py$  # Template for bazel creates syntax error
     -   id: debug-statements
-        exclude: ^check_python_version\.template\.py$  # Template for bazel creates syntax error
     -   id: mixed-line-ending
     -   id: check-case-conflict
     -   id: fix-byte-order-marker

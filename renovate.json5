@@ -1,0 +1,36 @@
+// Hey Friendly Face reading this :)
+// This is the configuration file for Renovate, a GitHub App that can automate dependency updates.
+
+// If you're here, you're probably looking to:
+// (1) Make updates for a dependency fully automated. Whitelist it at <TAG0>
+// (2) Add CI. Remove "requiredStatusChecks", below.
+// (3) Customize Renovate behavior further.
+  // For docs, see: https://docs.renovatebot.com/configuration-options/
+  // To debug, it can be helpful to looks at Renovate's runs/logs: https://developer.mend.io/[platform]/hedronvision/bazel-compile-commands-extractor
+  // This file is .json5, so we can have helpful comments, like this one :) [Normal JSON, Renovate's default, has no comments.]
+// (4) Learn about what's going on here and what Renovate can do. Read on :)
+// If you need more help, contact @cpsauer.
+
+{
+  "assignees": ["cpsauer"], // By default, CS's responsibility, because it's build-infra related and he set this up.
+
+  "packageRules": [{ // If you want a package to update on autopilot and have reasonably high confidence that updates won't break things, whitelist it here avoid having automated PRs to review.
+    "automerge": true, // Just automatically propose and merge in dependency upgrades to the latest.
+    "automergeType": "branch", // No PR unless tests fail; just do it.
+    "matchPackageNames" : [ // Add Bazel name= parameter here. <TAG0>.
+      "rules_python",
+      "orjson",
+    ],
+  }],
+
+  // Defaults--and the tweaks we wish were defaults
+  "extends": ["config:base"], // Gives us the Renovate defaults (Renovate auto-added)
+  "requiredStatusChecks": null, // No current tests. This should change if/when we set up CI. You'll probably need to look at https://docs.renovatebot.com/configuration-options/
+  "separateMajorMinor": false, // Just always take the latest version.
+  // Remove limits added by config:base defaults.
+  "prConcurrentLimit": 0,
+  "prHourlyLimit": 0,
+  // Has Renovate maintain an issue with the status of dependencies--and a manual run button. Super handy but was originally not on by default.
+  "dependencyDashboard": true,
+  "dependencyDashboardHeader": "Organization members: Check Renovate logs here: https://developer.mend.io/[platform]/hedronvision/bazel-compile-commands-extractor", // Footer seems to prevent manual run checkbox, so I made this a header.
+}
