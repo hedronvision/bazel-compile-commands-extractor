@@ -1,7 +1,7 @@
 # Do not change the filename; it is part of the user interface.
 
 
-load("@python_3_11//:defs.bzl", "interpreter")
+load("@python_3_10//:defs.bzl", "interpreter")
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 

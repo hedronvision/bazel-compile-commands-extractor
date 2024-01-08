@@ -58,7 +58,7 @@ refresh_compile_commands(
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 load("@hedron_compile_commands_pip//:requirements.bzl", "requirement")
-load("@python_3_11//:defs.bzl", "py_binary")
+load("@python_3_10//:defs.bzl", "py_binary")
 
 
 def refresh_compile_commands(
