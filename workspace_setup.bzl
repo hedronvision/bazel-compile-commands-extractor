@@ -14,21 +14,17 @@ def hedron_compile_commands_setup(module_ctx = None):
     # Unified setup for users' WORKSPACES and this workspace when used standalone.
     # See invocations in:
     #     README.md (for WORKSPACE users)
-    #     MODULE.bazel (for bzlmod users)
-    #     WORKSPACE (for working on this repo standalone)
+    #     MODULE.bazel (for bzlmod users and for working on this repo standalone)
 
-    # If adding dependencies available via bzlmod, consider adding them to MODULE.bazel, too, and only loading them the WORKSPACE way when needed.
-    # if not module_ctx:
-    #     # Load bzlmod-available packages.
-
-    # rules_python cannot be loaded this way because the WORKSPACE and (currently unstable) bzlmod APIs differ just enough that loads would fail if you tried to support both at the same time.
-    maybe(
-        http_archive,
-        name = "rules_python",
-        sha256 = "e85ae30de33625a63eca7fc40a94fea845e641888e52f32b6beea91e8b1b2793",
-        strip_prefix = "rules_python-0.27.1",
-        url = "https://github.com/bazelbuild/rules_python/releases/download/0.27.1/rules_python-0.27.1.tar.gz",
-    )
+    # If adding dependencies available via bzlmod, consider adding them to MODULE.bazel, too, and only loading them the WORKSPACE way when needed. For example:
+    if not module_ctx:
+        maybe(
+            http_archive,
+            name = "rules_python",
+            sha256 = "e85ae30de33625a63eca7fc40a94fea845e641888e52f32b6beea91e8b1b2793",
+            strip_prefix = "rules_python-0.27.1",
+            url = "https://github.com/bazelbuild/rules_python/releases/download/0.27.1/rules_python-0.27.1.tar.gz",
+        )
 
 
 hedron_compile_commands_extension = module_extension( # Note: Doesn't break loading from WORKSPACE as far back as Bazel 5.0.0

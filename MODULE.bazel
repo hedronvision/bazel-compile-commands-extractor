@@ -1,23 +1,22 @@
 module(name = "hedron_compile_commands")
 
-use_extension("//:workspace_setup.bzl", "hedron_compile_commands_extension")
-use_extension("//:workspace_setup_transitive.bzl", "hedron_compile_commands_extension")
-use_extension("//:workspace_setup_transitive_transitive.bzl", "hedron_compile_commands_extension")
-use_extension("//:workspace_setup_transitive_transitive_transitive.bzl", "hedron_compile_commands_extension")
+p = use_extension("//:workspace_setup.bzl", "hedron_compile_commands_extension")
+pt = use_extension("//:workspace_setup_transitive.bzl", "hedron_compile_commands_extension")
+ptt = use_extension("//:workspace_setup_transitive_transitive.bzl", "hedron_compile_commands_extension")
+pttt = use_extension("//:workspace_setup_transitive_transitive_transitive.bzl", "hedron_compile_commands_extension")
 
-# While we're supporting the WORKSPACE, we need to load rules_python through its WORKSPACE mechanism because the (currently unstable) bzlmod APIs differ just enough that loads would fail if you tried to support both at the same time.
-# But this is how you'd load rules_python from bzlmod:
-# bazel_dep(name = "rules_python", version = "0.27.1")
-# python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-# python.toolchain(
-#     python_version = "3.11",
-# )
-# use_repo(python, "python_versions")
-# pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
-# pip.parse(
-#     hub_name = "hedron_compile_commands_pip",
-#     # Available versions are listed in @rules_python//python:versions.bzl.
-#     python_version = "3.11",
-#     requirements_lock = "//:requirements.txt",
-# )
-# use_repo(pip, "hedron_compile_commands_pip")
+
+bazel_dep(name = "rules_python", version = "0.27.1")
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    python_version = "3.11",
+)
+use_repo(python, "python_3_11")
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "hedron_compile_commands_pip",
+    # Available versions are listed in @rules_python//python:versions.bzl.
+    python_version = "3.11",
+    requirements_lock = "//:requirements.txt",
+)
+use_repo(pip, "hedron_compile_commands_pip")

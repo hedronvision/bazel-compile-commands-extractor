@@ -27,14 +27,14 @@ def hedron_compile_commands_setup_transitive_transitive(module_ctx = None):
     # Unified setup for users' WORKSPACES and this workspace when used standalone.
     # See invocations in:
     #     README.md (for WORKSPACE users)
-    #     MODULE.bazel (for bzlmod users)
-    #     WORKSPACE (for working on this repo standalone)
+    #     MODULE.bazel (for bzlmod users and for working on this repo standalone)
 
-    pip_parse(
-        name = "hedron_compile_commands_pip",
-        python_interpreter_target = interpreter,
-        requirements_lock = "@hedron_compile_commands//:requirements.txt",
-    )
+    if not module_ctx:
+        pip_parse(
+            name = "hedron_compile_commands_pip",
+            python_interpreter_target = interpreter,
+            requirements_lock = "@hedron_compile_commands//:requirements.txt",
+        )
 
 
 hedron_compile_commands_extension = module_extension( # Note: Doesn't break loading from WORKSPACE as far back as Bazel 5.0.0

@@ -26,10 +26,10 @@ def hedron_compile_commands_setup_transitive_transitive_transitive(module_ctx = 
     # Unified setup for users' WORKSPACES and this workspace when used standalone.
     # See invocations in:
     #     README.md (for WORKSPACE users)
-    #     MODULE.bazel (for bzlmod users)
-    #     WORKSPACE (for working on this repo standalone)
+    #     MODULE.bazel (for bzlmod users and for working on this repo standalone)
 
-    install_deps()
+    if not module_ctx:
+        install_deps()
 
 
 hedron_compile_commands_extension = module_extension( # Note: Doesn't break loading from WORKSPACE as far back as Bazel 5.0.0
