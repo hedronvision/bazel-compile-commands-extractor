@@ -82,7 +82,7 @@ def refresh_compile_commands(
 
     # Make any package-relative labels absolute
     targets = {
-        target if target.startswith("/") or target.startswith("@") else "@{}//{}:{}".format(native.repository_name(), native.package_name(), target.removeprefix(":")): flags for target, flags in targets.items()
+        target if target.startswith("/") or target.startswith("@") else "{}//{}:{}".format(native.repository_name(), native.package_name(), target.removeprefix(":")): flags for target, flags in targets.items()
     }
 
     # Generate the core, runnable python script from refresh.template.py
