@@ -21,9 +21,9 @@ def hedron_compile_commands_setup(module_ctx = None):
         maybe(
             http_archive,
             name = "rules_python",
-            sha256 = "e85ae30de33625a63eca7fc40a94fea845e641888e52f32b6beea91e8b1b2793",
-            strip_prefix = "rules_python-0.27.1",
-            url = "https://github.com/bazelbuild/rules_python/releases/download/0.27.1/rules_python-0.27.1.tar.gz",
+            sha256 = "d70cd72a7a4880f0000a6346253414825c19cdd40a28289bdf67b8e6480edff8",
+            strip_prefix = "rules_python-0.28.0",
+            url = "https://github.com/bazelbuild/rules_python/releases/download/0.28.0/rules_python-0.28.0.tar.gz",
         )
 
 

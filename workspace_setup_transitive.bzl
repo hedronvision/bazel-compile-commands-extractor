@@ -29,9 +29,9 @@ def hedron_compile_commands_setup_transitive(module_ctx = None):
     if not module_ctx:
         py_repositories()
         python_register_toolchains(
-            name = "python_3_10",
+            name = "python_3_11",
             # Available versions are listed in @rules_python//python:versions.bzl.
-            python_version = "3.10",
+            python_version = "3.11",
         )
 
 hedron_compile_commands_extension = module_extension( # Note: Doesn't break loading from WORKSPACE as far back as Bazel 5.0.0

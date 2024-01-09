@@ -17,7 +17,7 @@ filegroup(
     srcs = glob(["**/*.bzl"]) + [
         "@bazel_tools//tools:bzl_srcs",
         "@hedron_compile_commands_pip//:requirements.bzl",
-        "@python_3_10//:defs.bzl",
+        "@python_3_11//:defs.bzl",
         "@rules_python//:bzl",
     ],
 )
