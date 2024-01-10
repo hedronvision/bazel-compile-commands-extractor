@@ -1204,7 +1204,7 @@ def _get_commands(target: str, flags: str):
     ]
 
     if _get_bazel_version() >= (6, 1, 0):
-        aquery_args += ['--host_features=-compiler_param_file']
+        aquery_args += ['--host_features=-compiler_param_file', '--host_features=-layering_check']
 
     aquery_args += additional_flags
 
