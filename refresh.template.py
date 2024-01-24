@@ -1281,7 +1281,7 @@ def _ensure_external_workspaces_link_exists():
         # Normalize the path for matching
         # First, workaround a gross case where Windows readlink returns extended path, starting with \\?\, causing the match to fail
         if is_windows:
-            current_dest = current_dest.removeprefix('\\\\?\\')
+            current_dest = str(current_dest).removeprefix('\\\\?\\')
         current_dest = pathlib.Path(current_dest)
 
         if dest != current_dest:
