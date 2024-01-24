@@ -161,7 +161,7 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     # We assume that this Makefile-like dependency file (`*.d`) contains exactly one `target: dependencies` rule.
     # There can be an optional space after the target, and long lists of dependencies (often) carry over with a backslash and newline.
     # For example, `d_file_content` might be: `"foo.o : foo.cc bar.h \\\n     baz.hpp"`.
-    target, dependencies = d_file_content.split(':', 1)
+    target, dependencies = d_file_content.rsplit(':', 1)
     target = target.strip()  # Remove the optional trailing space.
     assert target.endswith(('.o', '.obj')), "Something went wrong in makefile parsing to get headers. The target should be an object file. Output:\n" + d_file_content
     # Undo shell-like line wrapping because the newlines aren't eaten by shlex.join. Note also that it's the line wrapping is inconsistently generated across compilers and depends on the lengths of the filenames, so you can't just split on the escaped newlines.
