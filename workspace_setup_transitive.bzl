@@ -30,6 +30,7 @@ def hedron_compile_commands_setup_transitive(module_ctx = None):
         py_repositories()
         python_register_toolchains(
             name = "python_3_11",
+            ignore_root_user_error = True,
             # Available versions are listed in @rules_python//python:versions.bzl.
             python_version = "3.11",
         )
