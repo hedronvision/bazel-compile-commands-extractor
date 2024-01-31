@@ -35,3 +35,10 @@ cc_binary(
     srcs = ["print_args.cpp"],
     visibility = ["//visibility:public"],
 )
+
+# Quick test for https://github.com/bazelbuild/rules_python/issues/1732#issuecomment-1918268343. Delete when resolved.
+load("@python_3_11//:defs.bzl", "py_binary")
+py_binary(
+    name = "nvcc_clang_diff",
+    srcs = ["nvcc_clang_diff.py"],
+)
