@@ -30,6 +30,7 @@ def hedron_compile_commands_setup_transitive_transitive(module_ctx = None):
 
     # Currently nothing to do -> no-op.
     # So why is this even here? Enables future expansion (e.g to add transitive dependencies) without changing the user interface.
+    # Originally added for rules_python, which we reverted, but are keeping this interface to be used once it's fixed. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/168 for details.
     pass
 
 
