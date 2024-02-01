@@ -16,9 +16,6 @@ filegroup(
     visibility = ["//visibility:public"],
     srcs = glob(["**/*.bzl"]) + [
         "@bazel_tools//tools:bzl_srcs",
-        "@hedron_compile_commands_pip//:requirements.bzl",
-        "@python_3_11//:defs.bzl",
-        "@rules_python//:bzl",
     ],
 )
 
@@ -28,17 +25,10 @@ filegroup(
 # Implementation:
 # If you are looking into the implementation, start with the overview in ImplementationReadme.md.
 
-exports_files(["refresh.template.py"])  # For implicit use by the refresh_compile_commands macro, not direct use.
+exports_files(["refresh.template.py", "check_python_version.template.py"])  # For implicit use by the refresh_compile_commands macro, not direct use.
 
 cc_binary(
     name = "print_args",
     srcs = ["print_args.cpp"],
     visibility = ["//visibility:public"],
-)
-
-# Quick test for https://github.com/bazelbuild/rules_python/issues/1732#issuecomment-1918268343. Delete when resolved.
-load("@python_3_11//:defs.bzl", "py_binary")
-py_binary(
-    name = "nvcc_clang_diff",
-    srcs = ["nvcc_clang_diff.py"],
 )

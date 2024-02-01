@@ -4,19 +4,3 @@ p = use_extension("//:workspace_setup.bzl", "hedron_compile_commands_extension")
 pt = use_extension("//:workspace_setup_transitive.bzl", "hedron_compile_commands_extension")
 ptt = use_extension("//:workspace_setup_transitive_transitive.bzl", "hedron_compile_commands_extension")
 pttt = use_extension("//:workspace_setup_transitive_transitive_transitive.bzl", "hedron_compile_commands_extension")
-
-
-bazel_dep(name = "rules_python", version = "0.29.0")
-python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-python.toolchain(
-    python_version = "3.11",
-)
-use_repo(python, "python_3_11")
-pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
-pip.parse(
-    hub_name = "hedron_compile_commands_pip",
-    # Available versions are listed in @rules_python//python:versions.bzl.
-    python_version = "3.11",
-    requirements_lock = "//:requirements.txt",
-)
-use_repo(pip, "hedron_compile_commands_pip")

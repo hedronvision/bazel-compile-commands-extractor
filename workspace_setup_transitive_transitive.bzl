@@ -1,10 +1,5 @@
 # Do not change the filename; it is part of the user interface.
 
-
-load("@python_3_11//:defs.bzl", "interpreter")
-load("@rules_python//python:pip.bzl", "pip_parse")
-
-
 def hedron_compile_commands_setup_transitive_transitive(module_ctx = None):
     """Part 3 of setting up a WORKSPACE to have hedron_compile_commands used within it.
 
@@ -29,12 +24,13 @@ def hedron_compile_commands_setup_transitive_transitive(module_ctx = None):
     #     README.md (for WORKSPACE users)
     #     MODULE.bazel (for bzlmod users and for working on this repo standalone)
 
-    if not module_ctx:
-        pip_parse(
-            name = "hedron_compile_commands_pip",
-            python_interpreter_target = interpreter,
-            requirements_lock = "@hedron_compile_commands//:requirements.txt",
-        )
+    # If adding dependencies available via bzlmod, consider adding them to MODULE.bazel, too, and only loading them the WORKSPACE way when needed. For example:
+    # if not module_ctx:
+    #   # Load bzlmod-available packages.
+
+    # Currently nothing to do -> no-op.
+    # So why is this even here? Enables future expansion (e.g to add transitive dependencies) without changing the user interface.
+    pass
 
 
 hedron_compile_commands_extension = module_extension( # Note: Doesn't break loading from WORKSPACE as far back as Bazel 5.0.0

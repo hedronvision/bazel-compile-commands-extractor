@@ -57,8 +57,6 @@ refresh_compile_commands(
 # Implementation
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
-load("@hedron_compile_commands_pip//:requirements.bzl", "requirement")
-load("@python_3_11//:defs.bzl", "py_binary")
 
 
 def refresh_compile_commands(
@@ -85,16 +83,21 @@ def refresh_compile_commands(
         target if target.startswith("/") or target.startswith("@") else "{}//{}:{}".format(native.repository_name(), native.package_name(), target.removeprefix(":")): flags for target, flags in targets.items()
     }
 
+    # Create a wrapper script that prints a helpful error message if the python version is too old, generated from check_python_version.template.py
+    version_checker_script_name = name + ".check_python_version.py"
+    _check_python_version(name = version_checker_script_name, to_run = name)
+
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
     _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
 
     # Combine them so the wrapper calls the main script
-    py_binary(
+    native.py_binary(
         name = name,
-        srcs = [script_name],
-        deps = [requirement("orjson")],
+        main = version_checker_script_name,
+        srcs = [version_checker_script_name, script_name],
         data = ["@hedron_compile_commands//:print_args"],
+        imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
         **kwargs
     )
 
@@ -129,4 +132,25 @@ _expand_template = rule(
     },
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],  # Needed for find_cpp_toolchain with --incompatible_enable_cc_toolchain_resolution
     implementation = _expand_template_impl,
+)
+
+def _check_python_version_impl(ctx):
+    """Sets up check_python_version.template.py to call {to_run}.py's main()"""
+    script = ctx.actions.declare_file(ctx.attr.name)
+    ctx.actions.expand_template(
+        output = script,
+        is_executable = True,
+        template = ctx.file._template,
+        substitutions = {
+            "{to_run}": ctx.attr.to_run,
+        },
+    )
+    return DefaultInfo(files = depset([script]))
+
+_check_python_version = rule(
+    attrs = {
+        "to_run": attr.string(mandatory = True), # Name of the python module (no .py) to import and call .main() on, should checks succeed.
+        "_template": attr.label(allow_single_file = True, default = "check_python_version.template.py"),
+    },
+    implementation = _check_python_version_impl,
 )

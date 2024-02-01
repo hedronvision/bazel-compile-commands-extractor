@@ -17,14 +17,12 @@ def hedron_compile_commands_setup(module_ctx = None):
     #     MODULE.bazel (for bzlmod users and for working on this repo standalone)
 
     # If adding dependencies available via bzlmod, consider adding them to MODULE.bazel, too, and only loading them the WORKSPACE way when needed. For example:
-    if not module_ctx:
-        maybe(
-            http_archive,
-            name = "rules_python",
-            sha256 = "d71d2c67e0bce986e1c5a7731b4693226867c45bfe0b7c5e0067228a536fc580",
-            strip_prefix = "rules_python-0.29.0",
-            url = "https://github.com/bazelbuild/rules_python/releases/download/0.29.0/rules_python-0.29.0.tar.gz",
-        )
+    # if not module_ctx:
+    #   # Load bzlmod-available packages.
+
+    # Currently nothing to do -> no-op.
+    # So why is this even here? Enables future expansion (e.g to add transitive dependencies) without changing the user interface.
+    pass
 
 
 hedron_compile_commands_extension = module_extension( # Note: Doesn't break loading from WORKSPACE as far back as Bazel 5.0.0
