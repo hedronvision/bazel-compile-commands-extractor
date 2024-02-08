@@ -232,7 +232,7 @@ def _is_nvcc(path: str):
     return os.path.basename(path).startswith('nvcc')
 
 
-def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_key: str):
+def _get_headers_gcc(compile_action, source_path: str, action_key: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
 
     Relatively slow. Requires running the C preprocessor if we can't hit Bazel's cache.
@@ -241,12 +241,12 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
 
     # Check to see if Bazel has an (approximately) fresh cache of the included headers, and if so, use them to avoid a slow preprocessing step.
     if action_key in _get_bazel_cached_action_keys():  # Safe because Bazel only holds one cached action key per path, and the key contains the path.
-        for i, arg in enumerate(compile_args):
+        for i, arg in enumerate(compile_action.arguments):
             if arg.startswith('-MF'):
                 if len(arg) > 3: # Either appended, like -MF<file>
                     dep_file_path = arg[:3]
                 else: # Or after as a separate arg, like -MF <file>
-                    dep_file_path = compile_args[i+1]
+                    dep_file_path = compile_action.arguments[i+1]
                 if os.path.isfile(dep_file_path):
                     dep_file_last_modified = os.path.getmtime(dep_file_path) # Do before opening just as a basic hedge against concurrent write, even though we won't handle the concurrent delete case perfectly.
                     with open(dep_file_path) as dep_file:
@@ -262,7 +262,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
     # Clang on Apple doesn't let later flags override earlier ones, unfortunately.
     # These flags are prefixed with M for "make", because that's their output format.
     # *-dependencies is the long form. And the output file is traditionally *.d
-    header_cmd = (arg for arg in compile_args
+    header_cmd = (arg for arg in compile_action.arguments
         if not arg.startswith('-M') and not arg.endswith(('-dependencies', '.d')))
 
     # Strip output flags. Apple clang tries to do a full compile if you don't.
@@ -290,6 +290,7 @@ def _get_headers_gcc(compile_args: typing.List[str], source_path: str, action_ke
         # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=compile_action.environmentVariables,
         encoding=locale.getpreferredencoding(),
         check=False, # We explicitly ignore errors and carry on.
     )
@@ -408,7 +409,7 @@ def _subprocess_run_spilling_over_to_param_file_if_needed(command: typing.List[s
             raise
 
 
-def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
+def _get_headers_msvc(compile_action, source_path: str):
     """Gets the headers used by a particular compile command that uses msvc argument formatting (including clang-cl.)
 
     Relatively slow. Requires running the C preprocessor.
@@ -416,7 +417,7 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
     # Flags reference here: https://docs.microsoft.com/en-us/cpp/build/reference/compiler-options
     # Relies on our having made the workspace directory simulate a complete version of the execroot with //external junction
 
-    header_cmd = list(compile_args) + [
+    header_cmd = list(compile_action.arguments) + [
         '/showIncludes', # Print included headers to stderr. https://docs.microsoft.com/en-us/cpp/build/reference/showincludes-list-include-files
         '/EP', # Preprocess (only, no compilation for speed), writing to stdout where we can easily ignore it instead of a file. https://docs.microsoft.com/en-us/cpp/build/reference/ep-preprocess-to-stdout-without-hash-line-directives
     ]
@@ -427,12 +428,13 @@ def _get_headers_msvc(compile_args: typing.List[str], source_path: str):
         # Bazel should have supplied the environment variables in aquery output but doesn't https://github.com/bazelbuild/bazel/issues/12852
     # Non-Bazel Windows users would normally configure these by calling vcvars
         # For more, see https://docs.microsoft.com/en-us/cpp/build/building-on-the-command-line
-    environment = dict(os.environ)
-    environment['INCLUDE'] = os.pathsep.join((
-        # Begin: template filled by Bazel
-        {windows_default_include_paths}
-        # End:   template filled by Bazel
-    ))
+    environment = compile_action.environmentVariables.copy()
+    if 'INCLUDE' not in environment:
+        environment['INCLUDE'] = os.pathsep.join((
+            # Begin: template filled by Bazel
+            {windows_default_include_paths}
+            # End:   template filled by Bazel
+        ))
 
     header_search_process = _subprocess_run_spilling_over_to_param_file_if_needed(
         header_cmd,
@@ -584,9 +586,9 @@ def _get_headers(compile_action, source_path: str):
                     return set(cached_headers)
 
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
-        headers, should_cache = _get_headers_msvc(compile_action.arguments, source_path)
+        headers, should_cache = _get_headers_msvc(compile_action, source_path)
     else:
-        headers, should_cache = _get_headers_gcc(compile_action.arguments, source_path, compile_action.actionKey)
+        headers, should_cache = _get_headers_gcc(compile_action, source_path, compile_action.actionKey)
 
     # Cache for future use
     if output_file and should_cache:
@@ -815,8 +817,6 @@ def _emscripten_platform_patch(compile_action):
     environment['EXT_BUILD_ROOT'] = str(workspace_absolute)
     environment['EMCC_SKIP_SANITY_CHECK'] = '1'
     environment['EM_COMPILER_WRAPPER'] = str(pathlib.PurePath({print_args_executable}))
-    if 'PATH' not in environment:
-        environment['PATH'] = os.environ['PATH']
     if 'EM_BIN_PATH' not in environment:
         environment['EM_BIN_PATH'] = str(get_workspace_root(sysroot))
     if 'EM_CONFIG_PATH' not in environment:
@@ -1110,6 +1110,8 @@ def _get_cpp_command_for_files(compile_action):
     """
     # Condense aquery's environment variables into a dictionary, the format you might expect.
     compile_action.environmentVariables = {pair.key: pair.value for pair in getattr(compile_action, 'environmentVariables', [])}
+    if 'PATH' not in compile_action.environmentVariables: # Bazel only adds if --incompatible_strict_action_env is passed--and otherwise inherits.
+        compile_action.environmentVariables['PATH'] = os.environ['PATH']
 
     # Patch command by platform, revealing any hidden arguments.
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
