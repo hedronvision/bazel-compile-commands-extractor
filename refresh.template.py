@@ -1305,7 +1305,7 @@ def _ensure_external_workspaces_link_exists():
         # This seemed to be the cleanest way to detect both.
         # Note that os.path.islink doesn't detect junctions.
         try:
-            current_dest = source.readlink()  # MIN_PY=3.9 source.readlink()
+            current_dest = os.readlink(source) # MIN_PY=3.9 source.readlink()
         except OSError:
             log_error(f">>> //external already exists, but it isn't a {'junction' if is_windows else 'symlink'}. //external is reserved by Bazel and needed for this tool. Please rename or delete your existing //external and rerun. More details in the README if you want them.") # Don't auto delete in case the user has something important there.
             sys.exit(1)
