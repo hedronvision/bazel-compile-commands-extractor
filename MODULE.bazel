@@ -1,4 +1,8 @@
-module(name = "hedron_compile_commands")
+module(
+    name = "bazel-compile-commands-extractor",
+    version = "0.0.0-dev",
+    repo_name = "hedron_compile_commands",
+)
 
 p = use_extension("//:workspace_setup.bzl", "hedron_compile_commands_extension")
 pt = use_extension("//:workspace_setup_transitive.bzl", "hedron_compile_commands_extension")
