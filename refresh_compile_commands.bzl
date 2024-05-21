@@ -115,12 +115,14 @@ def _expand_template_impl(ctx):
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
+            "{bazel_binary}": repr(ctx.attr.bazel_binary),
         },
     )
     return DefaultInfo(files = depset([script]))
 
 _expand_template = rule(
     attrs = {
+        "bazel_binary": attr.string(default = 'bazel'),
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
