@@ -95,8 +95,8 @@ def _print_header_finding_warning_once():
 _print_header_finding_warning_once.has_logged = False
 
 
-@functools.lru_cache(bazel_binary, maxsize=None)
-def _get_bazel_version():
+@functools.lru_cache(maxsize=None)
+def _get_bazel_version(bazel_binary):
     """Gets the Bazel version as a tuple of (major, minor, patch).
 
     The rolling release and the release candidate are treated as the LTS release.
@@ -130,7 +130,7 @@ def _get_bazel_version():
 def _get_bazel_cached_action_keys(bazel_binary):
     """Gets the set of actionKeys cached in bazel-out."""
     action_cache_process = subprocess.run(
-        ['bazel', 'dump', '--action_cache'],
+        [bazel_binary, 'dump', '--action_cache'],
         # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -232,7 +232,7 @@ def _is_nvcc(path: str):
     return os.path.basename(path).startswith('nvcc')
 
 
-def _get_headers_gcc(compile_action, source_path: str, action_key: str, bazel_binary:str):
+def _get_headers_gcc(compile_action, source_path: str, action_key: str, bazel_binary: str):
     """Gets the headers used by a particular compile command that uses gcc arguments formatting (including clang.)
 
     Relatively slow. Requires running the C preprocessor if we can't hit Bazel's cache.
@@ -1102,6 +1102,7 @@ def _get_cpp_command_for_files(compile_action, bazel_binary: str):
 
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
+
     # Condense aquery's environment variables into a dictionary, the format you might expect.
     compile_action.environmentVariables = {pair.key: pair.value for pair in getattr(compile_action, 'environmentVariables', [])}
     if 'PATH' not in compile_action.environmentVariables: # Bazel only adds if --incompatible_strict_action_env is passed--and otherwise inherits.
@@ -1145,7 +1146,7 @@ def _convert_compile_commands(aquery_output, bazel_binary: str):
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, args=(aquery_output.actions, bazel_binary))
+        outputs = threadpool.map(lambda p: _get_cpp_command_for_files(*p), [(action, bazel_binary) for action in aquery_output.actions])
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
@@ -1200,7 +1201,7 @@ def _get_commands(target: str, flags: str, bazel_binary: str):
         # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
         target_statment = f"filter('^(//|@//)',{target_statment})"
     aquery_args = [
-        'bazel',
+        bazel_binary,
         'aquery',
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
