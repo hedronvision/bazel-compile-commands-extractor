@@ -1435,7 +1435,7 @@ def main():
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
-    
+
     if not (root_dir := pathlib.Path({out_dir})).exists():
         root_dir.mkdir(parents=True)
 

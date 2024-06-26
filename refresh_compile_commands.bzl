@@ -95,7 +95,7 @@ def refresh_compile_commands(
 
     if not target_file_names:
         target_file_names = {}
-    
+
     target_file_names = {
         _make_label_absolute(target): file_names for target, file_names in target_file_names.items()
     }
