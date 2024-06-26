@@ -1405,20 +1405,60 @@ def main():
         # End:   template filled by Bazel
     ]
 
-    compile_command_entries = []
-    for (target, flags) in target_flag_pairs:
-        compile_command_entries.extend(_get_commands(target, flags))
+    target_file_names = {
+        # Begin: template filled by Bazel
+        {target_file_names}
+        # End:   template filled by Bazel
+    }
 
-    if not compile_command_entries:
+    # Associates compilation database file names with lists of compile commands.
+    # __all__ is a special case: It's the "catch all" for any compile commands that aren't
+    # assigned to a specific file. If no targets are assigned to specific files (i.e., if
+    # target_file_names is empty), all compile commands will go into __all__ and end up
+    # in one file.
+    compile_command_sets = {
+        '__all__': []
+    }
+
+    for (target, flags) in target_flag_pairs:
+        # If the target has a specific file name assigned, put the compile commands in their
+        # own set, to be written to their own file.
+        if target in target_file_names:
+            target_name = target_file_names[target]
+            compile_command_sets[target_name] = list(_get_commands(target, flags))
+        # Otherwise, put them into the main file.
+        else:
+            compile_command_sets['__all__'].extend(_get_commands(target, flags))
+
+    if len(compile_command_sets) <= 1 and len(compile_command_sets['__all__']) == 0:
         log_error(""">>> Not (over)writing compile_commands.json, since no commands were extracted and an empty file is of no use.
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
+    
+    if not (root_dir := pathlib.Path({out_dir})).exists():
+        root_dir.mkdir(parents=True)
+
     # Chain output into compile_commands.json
-    with open('compile_commands.json', 'w') as output_file:
-        json.dump(
-            compile_command_entries,
-            output_file,
-            indent=2, # Yay, human readability!
-            check_circular=False # For speed.
-        )
+    for target_name in compile_command_sets:
+        # If the target doesn't have a specified file name, put it into the "catch all"
+        # compilation database.
+        if target_name == '__all__':
+            file_path = root_dir / "compile_commands.json"
+        # Otherwise, write the database to the specific target file.
+        else:
+            target_dir = root_dir / target_name
+            target_dir.mkdir(exist_ok=True)
+            file_path = target_dir / "compile_commands.json"
+
+        # This condition is only relevant to __all__. If each specified target has a specified
+        # file name, there won't be any compile commands in __all__, and we shouldn't write
+        # a file with an empty array.
+        if (len(compile_command_sets[target_name]) > 0):
+            with open(file_path, 'w') as output_file:
+                json.dump(
+                    compile_command_sets[target_name],
+                    output_file,
+                    indent=2, # Yay, human readability!
+                    check_circular=False # For speed.
+                )
