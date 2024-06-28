@@ -507,7 +507,7 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
 
     # some/file.h, but not external/some/file.h
     # also allows for things like bazel-out/generated/file.h
-    if file_path.is_relative_to(pathlib.PurePath("external")):
+    if _is_relative_to(file_path, pathlib.PurePath("external")):
         return False
 
     # ... but, ignore files in e.g. bazel-out/<configuration>/bin/external/
