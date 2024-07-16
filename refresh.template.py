@@ -18,6 +18,7 @@ Interface (after template expansion):
 # Similarly, when upgrading, please search for that MIN_PY= tag.
 
 
+import collections
 import concurrent.futures
 import enum
 import functools  # MIN_PY=3.9: Replace `functools.lru_cache(maxsize=None)` with `functools.cache`.
@@ -1405,20 +1406,54 @@ def main():
         # End:   template filled by Bazel
     ]
 
-    compile_command_entries = []
-    for (target, flags) in target_flag_pairs:
-        compile_command_entries.extend(_get_commands(target, flags))
+    target_groups = {
+        # Begin: template filled by Bazel
+        {target_groups}
+        # End:   template filled by Bazel
+    }
 
-    if not compile_command_entries:
+    # Associates lists of compile commands with compile command "groups".
+    # __all__ is a special case: It contains all generated compile commands.
+    # Any other groups defined in `target_groups` will contain only
+    # the compile commands for the targets defined for those groups.
+    compile_command_sets = collections.defaultdict(list)
+
+    for target_key, target_data in target_flag_pairs:
+        target, flags = target_data
+        commands = list(_get_commands(target, flags))
+        # If the target is assigned to any groups, put the compile commands in the compile command sets for those groups.
+        groups_for_target = [group_name for group_name, target_keys in target_groups.items() if target_key in target_keys]
+        for group_name in groups_for_target:
+            compile_command_sets[group_name].extend(commands)
+        # Also put them into the main file.
+        compile_command_sets['__all__'].extend(commands)
+
+    if len(compile_command_sets) <= 1 and len(compile_command_sets['__all__']) == 0:
         log_error(""">>> Not (over)writing compile_commands.json, since no commands were extracted and an empty file is of no use.
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
+
+    if not (root_dir := pathlib.Path({out_dir})).exists():
+        root_dir.mkdir(parents=True)
+
     # Chain output into compile_commands.json
-    with open('compile_commands.json', 'w') as output_file:
-        json.dump(
-            compile_command_entries,
-            output_file,
-            indent=2, # Yay, human readability!
-            check_circular=False # For speed.
-        )
+    for group in compile_command_sets:
+        # If the target doesn't have a specified file name, put it into the "catch all"
+        # compilation database.
+        if group == '__all__':
+            file_path = root_dir / "compile_commands.json"
+        # Otherwise, write the database to the specific target file.
+        else:
+            target_dir = root_dir / group
+            target_dir.mkdir(exist_ok=True)
+            file_path = target_dir / "compile_commands.json"
+
+        if (len(compile_command_sets[group]) > 0):
+            with open(file_path, 'w') as output_file:
+                json.dump(
+                    compile_command_sets[group],
+                    output_file,
+                    indent=2, # Yay, human readability!
+                    check_circular=False # For speed.
+                )
