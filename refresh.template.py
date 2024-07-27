@@ -173,7 +173,7 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     # For example, `d_file_content` might be: `"foo.o : foo.cc bar.h \\\n     baz.hpp"`.
     target, dependencies = d_file_content.split(': ', 1)  # Needs to handle absolute Windows paths, like C:\
     target = target.strip()  # Remove the optional trailing space.
-    assert target.endswith(('.o', '.obj')), "Something went wrong in makefile parsing to get headers. The target should be an object file. Output:\n" + d_file_content
+    assert target.endswith(('.o', '.obj', ".h.processed")), "Something went wrong in makefile parsing to get headers. The target should be an object file., got " + target + " Output:\n" + d_file_content
     # Undo shell-like line wrapping because the newlines aren't eaten by shlex.join. Note also that it's the line wrapping is inconsistently generated across compilers and depends on the lengths of the filenames, so you can't just split on the escaped newlines.
     dependencies = dependencies.replace('\\\n', '')
     # On Windows, swap out (single) backslash path directory separators for forward slash. Shlex otherwise eats the separators...and Windows gcc intermixes backslash separators with backslash escaped spaces. For a real example of gcc run from Windows, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/81
@@ -691,7 +691,7 @@ def _get_files(compile_action):
 _get_files.has_logged_missing_file_error = False
 # Setup extensions and flags for the whole C-language family.
 # Clang has a list: https://github.com/llvm/llvm-project/blob/b9f3b7f89a4cb4cf541b7116d9389c73690f78fa/clang/lib/Driver/Types.cpp#L293
-_get_files.c_source_extensions = ('.c', '.i')
+_get_files.c_source_extensions = (".c", ".i", ".h")
 _get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C', '.CC', '.cp', '.CPP', '.C++', '.CXX', '.ii')
 _get_files.objc_source_extensions = ('.m',)
 _get_files.objcpp_source_extensions = ('.mm', '.M')
