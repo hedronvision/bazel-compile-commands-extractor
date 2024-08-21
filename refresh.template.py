@@ -1415,7 +1415,7 @@ def main():
         sys.exit(1)
 
     # Chain output into compile_commands.json
-    with open('compile_commands.json', 'w') as output_file:
+    with open(os.path.join({output_dir}, 'compile_commands.json'), 'w') as output_file:
         json.dump(
             compile_command_entries,
             output_file,
