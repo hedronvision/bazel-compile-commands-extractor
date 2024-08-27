@@ -691,7 +691,7 @@ def _get_files(compile_action):
 _get_files.has_logged_missing_file_error = False
 # Setup extensions and flags for the whole C-language family.
 # Clang has a list: https://github.com/llvm/llvm-project/blob/b9f3b7f89a4cb4cf541b7116d9389c73690f78fa/clang/lib/Driver/Types.cpp#L293
-_get_files.c_source_extensions = ('.c', '.i', '.h')
+_get_files.c_source_extensions = ('.c', '.i', '.h', '.inl')
 _get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C', '.CC', '.cp', '.CPP', '.C++', '.CXX', '.ii', '.hh', '.hpp', '.hxx')
 _get_files.objc_source_extensions = ('.m',)
 _get_files.objcpp_source_extensions = ('.mm', '.M')
