@@ -115,8 +115,10 @@ def _expand_template_impl(ctx):
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
+            "{bazel_command}": ctx.configuration.default_shell_env.get("BAZEL_WRAPPER_PATH", "bazel"),
         },
     )
+
     return DefaultInfo(files = depset([script]))
 
 _expand_template = rule(
