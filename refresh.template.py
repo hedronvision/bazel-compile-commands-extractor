@@ -48,7 +48,7 @@ class SGR(enum.Enum):
     FG_BLUE = '\033[0;34m'
 
 def _bazel():
-    bazelcmd = {bazel_cmd}
+    bazelcmd = {bazel_command}
     print(bazelcmd)
     return bazelcmd
 
