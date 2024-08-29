@@ -138,7 +138,7 @@ def _get_bazel_cached_action_keys():
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding=locale.getpreferredencoding(),
-        check=True, # Should always succeed.
+#        check=True, # Should always succeed.
     )
 
     action_keys = set()
