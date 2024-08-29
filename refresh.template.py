@@ -48,7 +48,9 @@ class SGR(enum.Enum):
     FG_BLUE = '\033[0;34m'
 
 def _bazel():
-    return {bazel_command}
+    bazelcmd = {bazel_cmd}
+    print(bazelcmd)
+    return bazelcmd
 
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
     """Log a message to stderr wrapped in an SGR context."""
