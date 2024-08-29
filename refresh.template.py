@@ -49,7 +49,6 @@ class SGR(enum.Enum):
 
 def _bazel():
     bazelcmd = {bazel_command}
-    print(bazelcmd)
     return bazelcmd
 
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
@@ -134,7 +133,7 @@ def _get_bazel_version():
 def _get_bazel_cached_action_keys():
     """Gets the set of actionKeys cached in bazel-out."""
     action_cache_process = subprocess.run(
-        [_bazel, 'dump', '--action_cache'],
+        [_bazel(), 'dump', '--action_cache'],
         # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
