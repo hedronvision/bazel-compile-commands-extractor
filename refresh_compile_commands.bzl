@@ -64,7 +64,6 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
-        bazel_command = "bazel",
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -90,7 +89,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, bazel_command = bazel_command, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
 
     # Combine them so the wrapper calls the main script
     native.py_binary(
@@ -116,7 +115,7 @@ def _expand_template_impl(ctx):
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
-            "{bazel_command}": repr(ctx.attr.bazel_command),
+            "{bazel_command}": repr(ctx.var.get("BAZEL_COMMAND", "bazel")),
         },
     )
 
