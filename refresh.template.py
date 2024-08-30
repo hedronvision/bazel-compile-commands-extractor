@@ -52,7 +52,8 @@ def _bazel():
     return bazelcmd
 
 def _threads():
-    threads = {threads}
+    user_max_threads = {max_threads}
+    threads = user_max_threads if user_max_threads else min(32, (os.cpu_count() or 1) + 4)
     return threads
 
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
