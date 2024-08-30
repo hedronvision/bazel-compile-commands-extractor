@@ -51,6 +51,10 @@ def _bazel():
     bazelcmd = {bazel_command}
     return bazelcmd
 
+def _threads():
+    threads = {threads}
+    return threads
+
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
     """Log a message to stderr wrapped in an SGR context."""
     print(sgr.value, colored_message, SGR.RESET.value, uncolored_message, sep='', file=sys.stderr, flush=True)
@@ -1146,7 +1150,7 @@ def _convert_compile_commands(aquery_output):
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
     with concurrent.futures.ThreadPoolExecutor(
-            max_workers=1 # trying with only one thread
+            max_workers=_threads()
     ) as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
