@@ -1170,13 +1170,32 @@ def _convert_compile_commands(aquery_output):
                 'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
             }
 
+def _split_startup(additional_flags):
+    new_flags = []
+    startup_flags = []
+    skip_next = False
+
+    for flag in additional_flags:
+        if skip_next:
+            startup_flags.append(flag)
+            skip_next = False
+            continue
+
+        if flag == "--startup":
+            skip_next = True
+        else:
+            new_flags.append(flag)
+
+    return new_flags, startup_flags
 
 def _get_commands(target: str, flags: str):
     """Yields compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
     # Log clear completion messages
     log_info(f">>> Analyzing commands used in {target}")
 
-    additional_flags = shlex.split(flags) + sys.argv[1:]
+    argv_flags, argv_startup_flags = _split_startup(sys.argv[1:])
+
+    additional_flags = shlex.split(flags) + argv_flags
 
     # Detect anything that looks like a build target in the flags, and issue a warning.
     # Note that positional arguments after -- are all interpreted as target patterns. (If it's at the end, then no worries.)
@@ -1199,8 +1218,9 @@ def _get_commands(target: str, flags: str):
     if {exclude_external_sources}:
         # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
         target_statment = f"filter('^(//|@//)',{target_statment})"
-    aquery_args = [
-        'bazel',
+    aquery_args = [ 'bazel' ]
+    aquery_args += argv_startup_flags
+    aquery_args += [
         'aquery',
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
