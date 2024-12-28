@@ -1147,6 +1147,17 @@ def _convert_compile_commands(aquery_output):
     ) as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
+    # Workaround for: https://github.com/clangd/clangd/issues/108
+    # Fixes clangd's ambiguous path handling which cause a broken f2-editing
+    def lower_drive_if_win32(dir):
+        if sys.platform == 'win32':
+            drive, path = os.path.splitdrive(dir)
+            dir = os.path.join(str(drive).lower(), path)
+
+        return dir
+    
+    dir = lower_drive_if_win32(os.environ["BUILD_WORKSPACE_DIRECTORY"])
+
     # Yield as compile_commands.json entries
     header_files_already_written = set()
     for source_files, header_files, compile_command_args in outputs:
@@ -1167,7 +1178,7 @@ def _convert_compile_commands(aquery_output):
                 # Using `arguments' instead of 'command' because it's now preferred by clangd. Heads also that  shlex.join doesn't work for windows cmd, so you'd need to use windows_list2cmdline if we ever switched back. For more, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/8#issuecomment-1090262263
                 'arguments': compile_command_args,
                 # Bazel gotcha warning: If you were tempted to use `bazel info execution_root` as the build working directory for compile_commands...search ImplementationReadme.md to learn why that breaks.
-                'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
+                'directory': dir,
             }
 
 
