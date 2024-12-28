@@ -1155,7 +1155,7 @@ def _convert_compile_commands(aquery_output):
             dir = os.path.join(str(drive).lower(), path)
 
         return dir
-    
+
     dir = lower_drive_if_win32(os.environ["BUILD_WORKSPACE_DIRECTORY"])
 
     # Yield as compile_commands.json entries
