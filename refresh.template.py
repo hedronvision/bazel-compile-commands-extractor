@@ -501,7 +501,7 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
         workspace_absolute = pathlib.PurePath(os.environ["BUILD_WORKSPACE_DIRECTORY"])
         if not _is_relative_to(file_path, workspace_absolute):
             return False
-        file_path = _is_relative_to(file_path, workspace_absolute)
+        file_path = file_path.relative_to(workspace_absolute)
     # You can now assume that the path is relative to the workspace.
     # [Already assuming that relative paths are relative to the main workspace.]
 
