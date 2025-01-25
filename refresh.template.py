@@ -685,8 +685,9 @@ def _get_files(compile_action):
             # lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type
         else:
             lang_flag = _get_files.extensions_to_language_args[os.path.splitext(source_file)[1]]
-        # Insert at front of (non executable) args, because --language is only supposed to take effect on files listed thereafter
-        compile_action.arguments.insert(1, lang_flag)
+        if lang_flag:
+            # Insert at front of (non executable) args, because --language is only supposed to take effect on files listed thereafter
+            compile_action.arguments.insert(1, lang_flag)
 
     return {source_file}, header_files
 _get_files.has_logged_missing_file_error = False
