@@ -681,7 +681,8 @@ def _get_files(compile_action):
         and not source_file.endswith(_get_files.c_source_extensions)
         and not any(arg.startswith('-x') or arg.startswith('--language') or arg.lower() in ('-objc', '-objc++', '/tc', '/tp') for arg in compile_action.arguments)):
         if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
-            lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type
+            pass
+            # lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type
         else:
             lang_flag = _get_files.extensions_to_language_args[os.path.splitext(source_file)[1]]
         # Insert at front of (non executable) args, because --language is only supposed to take effect on files listed thereafter
