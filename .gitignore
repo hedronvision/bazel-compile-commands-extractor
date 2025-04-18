@@ -3,3 +3,5 @@
 
 # Ignore links to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which the repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux.
 /bazel-*
+
+MODULE.bazel.lock
