@@ -851,6 +851,60 @@ BEGIN_ARGS_MARKER = '===HEDRON_COMPILE_COMMANDS_BEGIN_ARGS==='
 END_ARGS_MARKER = '===HEDRON_COMPILE_COMMANDS_END_ARGS==='
 
 
+def _unwrap_cc_wrapper(script_path: str):
+    # Validate input script path
+    if not os.path.isfile(script_path):
+        raise ValueError(
+            f"Invalid script path when unwrapping cc_wrapper.sh: {script_path}"
+        )
+
+    # Get absolute path of script_path
+    script_path = os.path.abspath(script_path)
+
+    # Define bash commands to extract the compiler command
+    commands = " && ".join(
+        [
+            "set -T",  # DEBUG & Traps need to be inherited by subshells
+            """trap 'if [[ $BASH_COMMAND =~ ^[[:space:]]*(/[^[:space:]]*/)?(clang|clang\+\+|gcc|g\+\+|emcc|em\+\+)([[:space:]]|$|[^-]) ]]; then
+echo $(read -ra arr <<< "$BASH_COMMAND" && echo "${arr[0]}") # Extract first element (compiler path)
+exit 0  # Exit after capturing compiler
+fi' DEBUG""",  # A trap to capture the compiler command
+            f"source {script_path}",  # Run the wrapper script within this script's context
+        ]
+    )
+
+    try:
+        # Run the bash command to capture the compiler path
+        result = subprocess.run(
+            ["bash", "-c", commands],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        # Check for stderr output and raise an error if present
+        if result.stderr:
+            raise RuntimeError(
+                f"Failed to unwrap cc_wrapper.sh: {result.stderr.strip()}"
+            )
+
+        # Get the output (compiler path)
+        compiler_path = os.path.realpath(result.stdout.strip())
+
+        # Validate the output is a single, valid executable path
+        if not compiler_path:
+            raise ValueError("No compiler path extracted from script")
+        if not os.path.isfile(compiler_path):
+            raise ValueError(f"Invalid compiler path: {compiler_path}")
+        if not os.access(compiler_path, os.X_OK):
+            raise ValueError(f"Compiler path is not executable: {compiler_path}")
+
+        return compiler_path
+
+    except subprocess.SubprocessError as e:
+        raise RuntimeError(f"Subprocess error while unwrapping cc_wrapper.sh: {str(e)}")
+
+
 def _all_platform_patch(compile_args: typing.List[str]):
     """Apply de-Bazeling fixes to the compile command that are shared across target platforms."""
     # clangd writes module cache files to the wrong place
@@ -891,6 +945,9 @@ def _all_platform_patch(compile_args: typing.List[str]):
             real_compiler_path = shutil.which(compiler)
             if real_compiler_path:
                 compile_args[0] = real_compiler_path
+    
+    if compile_args[0].endswith("cc_wrapper.sh"):
+        compile_args[0] = _unwrap_cc_wrapper(compile_args[0])
 
     # Any other general fixes would go here...
 
