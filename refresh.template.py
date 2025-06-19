@@ -1414,6 +1414,9 @@ def main():
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
+    # Sort output by filenaem to make output deterministic.
+    compile_command_entries.sort(lambda entry: entry['file'])
+
     # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:
         json.dump(
