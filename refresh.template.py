@@ -173,7 +173,7 @@ def _parse_headers_from_makefile_deps(d_file_content: str, source_path_for_sanit
     # For example, `d_file_content` might be: `"foo.o : foo.cc bar.h \\\n     baz.hpp"`.
     target, dependencies = d_file_content.split(': ', 1)  # Needs to handle absolute Windows paths, like C:\
     target = target.strip()  # Remove the optional trailing space.
-    assert target.endswith(('.o', '.obj')), "Something went wrong in makefile parsing to get headers. The target should be an object file. Output:\n" + d_file_content
+    assert target.endswith(_get_headers.output_extensions), "Something went wrong in makefile parsing to get headers. The target should be an object file. Output:\n" + d_file_content
     # Undo shell-like line wrapping because the newlines aren't eaten by shlex.join. Note also that it's the line wrapping is inconsistently generated across compilers and depends on the lengths of the filenames, so you can't just split on the escaped newlines.
     dependencies = dependencies.replace('\\\n', '')
     # On Windows, swap out (single) backslash path directory separators for forward slash. Shlex otherwise eats the separators...and Windows gcc intermixes backslash separators with backslash escaped spaces. For a real example of gcc run from Windows, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/81
@@ -267,12 +267,16 @@ def _get_headers_gcc(compile_action, source_path: str, action_key: str):
 
     # Strip output flags. Apple clang tries to do a full compile if you don't.
     header_cmd = (arg for arg in header_cmd
-        if arg != '-o' and not arg.endswith('.o'))
+        if arg != '-o' and not arg.endswith(_get_headers.output_extensions))
 
     # Strip sanitizer ignore lists...so they don't show up in the dependency list.
     # See https://clang.llvm.org/docs/SanitizerSpecialCaseList.html and https://github.com/hedronvision/bazel-compile-commands-extractor/issues/34 for more context.
     header_cmd = (arg for arg in header_cmd
         if not arg.startswith('-fsanitize'))
+
+    # Strip syntax-only option since it is ignored when running pre-processor only, and will create noisy warnings.
+    header_cmd = (arg for arg in header_cmd
+        if not arg.startswith('-fsyntax-only'))
 
     # Dump system and user headers to stdout...in makefile format.
     # Relies on our having made the workspace directory simulate a complete version of the execroot with //external symlink
@@ -421,6 +425,9 @@ def _get_headers_msvc(compile_action, source_path: str):
         '/showIncludes', # Print included headers to stderr. https://docs.microsoft.com/en-us/cpp/build/reference/showincludes-list-include-files
         '/EP', # Preprocess (only, no compilation for speed), writing to stdout where we can easily ignore it instead of a file. https://docs.microsoft.com/en-us/cpp/build/reference/ep-preprocess-to-stdout-without-hash-line-directives
     ]
+
+    # Strip syntax-only (/Zs) option since it is ignored when running pre-processor only, and will create noisy warnings.
+    header_cmd = (arg for arg in header_cmd if arg != '/Zs')
 
     # cl.exe needs the `INCLUDE` environment variable to find the system headers, since they aren't specified in the action command
     # Bazel neglects to include INCLUDE per action, so we'll do the best we can and infer them from the default (host) cc toolchain.
@@ -608,6 +615,7 @@ def _get_headers(compile_action, source_path: str):
 
     return headers
 _get_headers.has_logged = False
+_get_headers.output_extensions = ('.o', '.obj', '.processed')
 
 
 def _get_files(compile_action):
@@ -691,8 +699,8 @@ def _get_files(compile_action):
 _get_files.has_logged_missing_file_error = False
 # Setup extensions and flags for the whole C-language family.
 # Clang has a list: https://github.com/llvm/llvm-project/blob/b9f3b7f89a4cb4cf541b7116d9389c73690f78fa/clang/lib/Driver/Types.cpp#L293
-_get_files.c_source_extensions = ('.c', '.i')
-_get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C', '.CC', '.cp', '.CPP', '.C++', '.CXX', '.ii')
+_get_files.c_source_extensions = ('.c', '.i', '.h', '.inl')
+_get_files.cpp_source_extensions = ('.cc', '.cpp', '.cxx', '.c++', '.C', '.CC', '.cp', '.CPP', '.C++', '.CXX', '.ii', '.ipp', '.hh', '.hpp', '.hxx')
 _get_files.objc_source_extensions = ('.m',)
 _get_files.objcpp_source_extensions = ('.mm', '.M')
 _get_files.cuda_source_extensions = ('.cu', '.cui')
