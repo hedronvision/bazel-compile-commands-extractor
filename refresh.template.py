@@ -47,6 +47,14 @@ class SGR(enum.Enum):
     FG_YELLOW = '\033[0;33m'
     FG_BLUE = '\033[0;34m'
 
+def _bazel():
+    bazelcmd = {bazel_command}
+    return bazelcmd
+
+def _threads():
+    user_max_threads = {max_threads}
+    threads = user_max_threads if user_max_threads else min(32, (os.cpu_count() or 1) + 4)
+    return threads
 
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
     """Log a message to stderr wrapped in an SGR context."""
@@ -104,7 +112,7 @@ def _get_bazel_version():
     If the version can't be determined, returns (0, 0, 0).
     """
     bazel_version_process = subprocess.run(
-        ['bazel', 'version'],
+        [_bazel(), 'version'],
         # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -130,7 +138,7 @@ def _get_bazel_version():
 def _get_bazel_cached_action_keys():
     """Gets the set of actionKeys cached in bazel-out."""
     action_cache_process = subprocess.run(
-        ['bazel', 'dump', '--action_cache'],
+        [_bazel(), 'dump', '--action_cache'],
         # MIN_PY=3.7: Replace PIPEs with capture_output.
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1143,7 +1151,7 @@ def _convert_compile_commands(aquery_output):
     # Process each action from Bazelisms -> file paths and their clang commands
     # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
     with concurrent.futures.ThreadPoolExecutor(
-        max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
+            max_workers=_threads()
     ) as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
@@ -1200,7 +1208,7 @@ def _get_commands(target: str, flags: str):
         # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
         target_statment = f"filter('^(//|@//)',{target_statment})"
     aquery_args = [
-        'bazel',
+        _bazel(),
         'aquery',
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto

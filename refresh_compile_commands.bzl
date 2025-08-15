@@ -64,6 +64,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        max_threads = None,
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -89,7 +90,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, max_threads = max_threads, **kwargs)
 
     # Combine them so the wrapper calls the main script
     native.py_binary(
@@ -115,8 +116,11 @@ def _expand_template_impl(ctx):
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
+            "{bazel_command}": repr(ctx.var.get("BAZEL_COMMAND", "bazel")),
+            "{max_threads}": repr(ctx.attr.max_threads),
         },
     )
+
     return DefaultInfo(files = depset([script]))
 
 _expand_template = rule(
@@ -129,6 +133,8 @@ _expand_template = rule(
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
         # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
+        "bazel_command": attr.string(default = "bazel"),
+        "max_threads": attr.int(),
     },
     toolchains = ["@bazel_tools//tools/cpp:toolchain_type"],  # Needed for find_cpp_toolchain with --incompatible_enable_cc_toolchain_resolution
     implementation = _expand_template_impl,
