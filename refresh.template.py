@@ -1414,6 +1414,11 @@ def main():
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
+    try:
+        os.remove('compile_commands.json')
+    except FileNotFoundError:
+        pass
+
     # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:
         json.dump(
