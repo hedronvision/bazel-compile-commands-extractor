@@ -681,11 +681,13 @@ def _get_files(compile_action):
         and not source_file.endswith(_get_files.c_source_extensions)
         and not any(arg.startswith('-x') or arg.startswith('--language') or arg.lower() in ('-objc', '-objc++', '/tc', '/tp') for arg in compile_action.arguments)):
         if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
-            lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type
+            lang_flag = ''
+            # lang_flag = '/TP' # https://docs.microsoft.com/en-us/cpp/build/reference/tc-tp-tc-tp-specify-source-file-type
         else:
             lang_flag = _get_files.extensions_to_language_args[os.path.splitext(source_file)[1]]
-        # Insert at front of (non executable) args, because --language is only supposed to take effect on files listed thereafter
-        compile_action.arguments.insert(1, lang_flag)
+        if lang_flag:
+            # Insert at front of (non executable) args, because --language is only supposed to take effect on files listed thereafter
+            compile_action.arguments.insert(1, lang_flag)
 
     return {source_file}, header_files
 _get_files.has_logged_missing_file_error = False
@@ -1170,13 +1172,32 @@ def _convert_compile_commands(aquery_output):
                 'directory': os.environ["BUILD_WORKSPACE_DIRECTORY"],
             }
 
+def _split_startup(additional_flags):
+    new_flags = []
+    startup_flags = []
+    skip_next = False
+
+    for flag in additional_flags:
+        if skip_next:
+            startup_flags.append(flag)
+            skip_next = False
+            continue
+
+        if flag == "--startup":
+            skip_next = True
+        else:
+            new_flags.append(flag)
+
+    return new_flags, startup_flags
 
 def _get_commands(target: str, flags: str):
     """Yields compile_commands.json entries for a given target and flags, gracefully tolerating errors."""
     # Log clear completion messages
     log_info(f">>> Analyzing commands used in {target}")
 
-    additional_flags = shlex.split(flags) + sys.argv[1:]
+    argv_flags, argv_startup_flags = _split_startup(sys.argv[1:])
+
+    additional_flags = shlex.split(flags) + argv_flags
 
     # Detect anything that looks like a build target in the flags, and issue a warning.
     # Note that positional arguments after -- are all interpreted as target patterns. (If it's at the end, then no worries.)
@@ -1199,8 +1220,9 @@ def _get_commands(target: str, flags: str):
     if {exclude_external_sources}:
         # For efficiency, have bazel filter out external targets (and therefore actions) before they even get turned into actions or serialized and sent to us. Note: this is a different mechanism than is used for excluding just external headers.
         target_statment = f"filter('^(//|@//)',{target_statment})"
-    aquery_args = [
-        'bazel',
+    aquery_args = [ 'bazel' ]
+    aquery_args += argv_startup_flags
+    aquery_args += [
         'aquery',
         # Aquery docs if you need em: https://docs.bazel.build/versions/master/aquery.html
         # Aquery output proto reference: https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/analysis_v2.proto
