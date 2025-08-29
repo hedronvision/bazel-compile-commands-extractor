@@ -36,6 +36,9 @@ import time
 import types
 import typing  # MIN_PY=3.9: Switch e.g. typing.List[str] -> List[str]
 
+symlink_prefix = {experimental_symlink_prefix} or "bazel-"
+external_symlink_path = ({experimental_symlink_prefix}.rsplit("/", 1)[0] + "/external" if {experimental_symlink_prefix} and "/" in {experimental_symlink_prefix} else "external") # External should be moved to the same directory as the symlink_prefix files if they have been moved to a subdirectory
+
 
 @enum.unique
 class SGR(enum.Enum):
@@ -507,7 +510,7 @@ def _file_is_in_main_workspace_and_not_external(file_str: str):
 
     # some/file.h, but not external/some/file.h
     # also allows for things like bazel-out/generated/file.h
-    if _is_relative_to(file_path, pathlib.PurePath("external")):
+    if _is_relative_to(file_path, pathlib.PurePath(external_symlink_path)):
         return False
 
     # ... but, ignore files in e.g. bazel-out/<configuration>/bin/external/
@@ -1107,6 +1110,39 @@ def _get_cpp_command_for_files(compile_action):
     if 'PATH' not in compile_action.environmentVariables: # Bazel only adds if --incompatible_strict_action_env is passed--and otherwise inherits.
         compile_action.environmentVariables['PATH'] = os.environ['PATH']
 
+    if {experimental_symlink_prefix}:
+        # Regex matching for experimentally aliased symlinks
+        top_level_symlinks = r"(?P<prefix>bazel-out|external)"  # The symlinks we can expect to be used as the start of paths in compile_commands.json
+        flag = (
+            r"[-/][a-zA-Z0-9\-_]+"  # A flag like "-I" or "-frandom-seed" or "-something_weird"
+        )
+        full_regex = re.compile(
+            r"""
+            ^                           # Start at the beginning of the line
+            (?P<content>                # Capture content before prefix
+            (?:{flag})?                 # Optionally match a single flag, ie for "-Ibazel-out/..."
+            =?                          # Optionally match a single equals sign, ie for "-frandom-seed=bazel-out/..."
+            )                           # End capture content before prefix
+            {top_level_symlinks}        # Match one of the top level symlinks
+            /                           # End with the OS path separator
+            """.format(
+                flag=flag,
+                top_level_symlinks=top_level_symlinks,
+            ),
+            re.VERBOSE,
+        )
+
+        def replace_prefix(match):
+            content = match.group('content')
+            prefix = match.group('prefix')
+            if prefix == "bazel-out":
+                return f"{content}{symlink_prefix}out/"
+            elif prefix == "external":
+                return f"{content}{external_symlink_path}/"
+
+        for idx, arg in enumerate(compile_action.arguments):
+            compile_action.arguments[idx] = re.sub(full_regex, replace_prefix, arg)
+
     # Patch command by platform, revealing any hidden arguments.
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
     compile_action.arguments = _emscripten_platform_patch(compile_action)
@@ -1279,19 +1315,22 @@ def _get_commands(target: str, flags: str):
 def _ensure_external_workspaces_link_exists():
     """Postcondition: Either //external points into Bazel's fullest set of external workspaces in output_base, or we've exited with an error that'll help the user resolve the issue."""
     is_windows = os.name == 'nt'
-    source = pathlib.Path('external')
+    source = pathlib.Path(external_symlink_path)
 
-    if not os.path.lexists('bazel-out'):
-        log_error(">>> //bazel-out is missing. Please remove --symlink_prefix and --experimental_convenience_symlinks, so the workspace mirrors the compilation environment.")
+    if not os.path.lexists(f'{symlink_prefix}out'):
+        if {experimental_symlink_prefix}:
+            log_error(f">>> //{symlink_prefix}out is missing. Double check your --experimental_symlink_prefix location or disable this experimental feature.")
+        else:
+            log_error(">>> //bazel-out is missing. Please remove --symlink_prefix and --experimental_convenience_symlinks, so the workspace mirrors the compilation environment. Alternatively, you can try adding --experimental_symlink_prefix=<your_prefix> to the extractor command to experimentally support the --symlink_prefix bazel flag.")
         # Crossref: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/14 https://github.com/hedronvision/bazel-compile-commands-extractor/pull/65
         # Note: experimental_no_product_name_out_symlink is now enabled by default. See https://github.com/bazelbuild/bazel/commit/06bd3e8c0cd390f077303be682e9dec7baf17af2
         sys.exit(1)
 
     # Traverse into output_base via bazel-out, keeping the workspace position-independent, so it can be moved without rerunning
-    dest = pathlib.Path('bazel-out/../../../external')
-    if is_windows:
+    dest = pathlib.Path(f'{symlink_prefix}out/../../../external')
+    if is_windows or {experimental_symlink_prefix}: # When using experimental prefix, resolution needs to be done in two steps as well
         # On Windows, unfortunately, bazel-out is a junction, and accessing .. of a junction brings you back out the way you came. So we have to resolve bazel-out first. Not position-independent, but I think the best we can do
-        dest = (pathlib.Path('bazel-out').resolve()/'../../../external').resolve()
+        dest = (pathlib.Path(f'{symlink_prefix}out').resolve()/'../../../external').resolve()
 
     # Handle problem cases where //external exists
     if os.path.lexists(source): # MIN_PY=3.12: use source.exists(follow_symlinks=False), here and elsewhere.
@@ -1354,8 +1393,8 @@ def _ensure_gitignore_entries_exist():
 
     # Each (pattern, explanation) will be added to the `.gitignore` file if the pattern isn't present.
     needed_entries = [
-        (f'/{pattern_prefix}external', "# Ignore the `external` link (that is added by `bazel-compile-commands-extractor`). The link differs between macOS/Linux and Windows, so it shouldn't be checked in. The pattern must not end with a trailing `/` because it's a symlink on macOS/Linux."),
-        (f'/{pattern_prefix}bazel-*', "# Ignore links to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which your repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux. This ignore pattern should almost certainly be checked into a .gitignore in your workspace root, too, for folks who don't use this tool."),
+        (f'/{pattern_prefix}{external_symlink_path}', "# Ignore the `external` link (that is added by `bazel-compile-commands-extractor`). The link differs between macOS/Linux and Windows, so it shouldn't be checked in. The pattern must not end with a trailing `/` because it's a symlink on macOS/Linux."),
+        (f'/{pattern_prefix}{symlink_prefix}*', "# Ignore links to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which your repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux. This ignore pattern should almost certainly be checked into a .gitignore in your workspace root, too, for folks who don't use this tool."),
         (f'/{pattern_prefix}compile_commands.json', "# Ignore generated output. Although valuable (after all, the primary purpose of `bazel-compile-commands-extractor` is to produce `compile_commands.json`!), it should not be checked in."),
         ('.cache/', "# Ignore the directory in which `clangd` stores its local index."),
     ]
