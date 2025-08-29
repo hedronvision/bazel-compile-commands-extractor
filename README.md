@@ -163,6 +163,23 @@ Adding `exclude_external_sources = True` and `exclude_headers = "external"` can 
 
 For now, we'd suggest continuing on to set up `clangd` (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of `clangd` and/or this tool to index quickly, take a look at the docs at the top of [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
 
+### ⚠️ EXPERIMENTAL FEATURE: --symlink-prefix support
+
+Bazel allows use of the --symlink-prefix argument, commonly in `.bazelrc`, ie `build --symlink_prefix=build/bazel-`. Using this can help keep your workspace tidy by changing the names of the generated symlinks or even putting them in a subdirectory. Experimental support for this feature can be used by adding `experimental_symlink_prefix = <your_prefix>` to your rule. Make sure the prefix you add here matches what you use with bazel commands/.bazelrc! For example:
+
+```Starlark
+refresh_compile_commands(
+    name = "refresh_compile_commands",
+    experimental_symlink_prefix = "build/bazel-",
+)
+```
+
+This will tell the tool to expect symlinks with the prefix `build/bazel-` instead of `bazel-`. It will also place the `external` directory symlink in the subdirectory associated with the prefix (if any), ie `build/` to keep things tidy and the subdirectory matching bazel's build workspace.
+
+**IMPORTANT ADDITIONAL REQUIREMENT:**
+
+If you use a symlink prefix with a subdirectory, the `external` folder will no longer be in the project root. Bazel will no longer ignore it by default, and will try to look for targets inside it too, which will cause many commands to fail. To avoid this, you'll need to add a `.bazelignore` file to the root of your project, and add `build` or `build/external` to it.
+
 ## Editor Setup — for autocomplete based on `compile_commands.json`
 
 

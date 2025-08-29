@@ -64,6 +64,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        experimental_symlink_prefix = None,
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -89,7 +90,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, experimental_symlink_prefix = experimental_symlink_prefix, **kwargs)
 
     # Combine them so the wrapper calls the main script
     native.py_binary(
@@ -115,6 +116,7 @@ def _expand_template_impl(ctx):
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
+            "{experimental_symlink_prefix}": repr(ctx.attr.experimental_symlink_prefix),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -124,6 +126,7 @@ _expand_template = rule(
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
+        "experimental_symlink_prefix": attr.string(),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         "_print_args_executable": attr.label(executable = True, cfg = "target", default = "//:print_args"),
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
