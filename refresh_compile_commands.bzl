@@ -49,6 +49,12 @@ refresh_compile_commands(
         # exclude_headers = "external",
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
+
+    # Want to change the filename or path for the output compile_commands.json file?
+        # json_output_path = "NewCompileCommands.json",
+    # Make Variable Substitutions are also supported: https://bazel.build/reference/be/make-variables
+        # json_output_path = "$(BINDIR)/compile_commands/bazel_compile_commands.json",
+        # This will result in bazel-out/compile_commands/bazel_compile_commands.json or a slightly different directory if you are using --symlink-prefix or similar to change where bazel's binary directory is.
 ```
 """
 
@@ -64,6 +70,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        json_output_path = "compile_commands.json",
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -89,7 +96,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, json_output_path = json_output_path, **kwargs)
 
     # Combine them so the wrapper calls the main script
     native.py_binary(
@@ -114,6 +121,7 @@ def _expand_template_impl(ctx):
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
+            "{json_output_path}": repr(ctx.expand_make_variables("json_output_path_expansion", ctx.attr.json_output_path, {})), # Subject to make variable substitutions
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
         },
     )
@@ -124,6 +132,7 @@ _expand_template = rule(
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
+        "json_output_path": attr.string(),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         "_print_args_executable": attr.label(executable = True, cfg = "target", default = "//:print_args"),
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330

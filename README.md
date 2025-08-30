@@ -146,6 +146,9 @@ refresh_compile_commands(
     # Wildcard patterns, like //... for everything, *are* allowed here, just like a build.
       # As are additional targets (+) and subtractions (-), like in bazel query https://docs.bazel.build/versions/main/query.html#expressions
     # And if you're working on a header-only library, specify a test or binary target that compiles it.
+
+    # Optionally, you can change the output path to the compile_commands.json file. Make Variable Substitutions are also supported: https://bazel.build/reference/be/make-variables
+    json_output_path = "myFolder/NewCompileCommands.json",
 )
 ```
 
