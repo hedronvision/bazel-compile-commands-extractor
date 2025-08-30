@@ -70,6 +70,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        experimental_symlink_prefix = None,
         json_output_path = "compile_commands.json",
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
@@ -96,7 +97,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, json_output_path = json_output_path, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, experimental_symlink_prefix = experimental_symlink_prefix, json_output_path = json_output_path, **kwargs)
 
     # Combine them so the wrapper calls the main script
     native.py_binary(
@@ -111,6 +112,13 @@ def refresh_compile_commands(
 def _expand_template_impl(ctx):
     """Inject targets of interest--and other settings--into refresh.template.py, and set it up to be run."""
     script = ctx.actions.declare_file(ctx.attr.name)
+
+    def _symlink_prefix_replacer(path):
+        """Replace the bazel- prefix with the experimental --symlink-prefix one if it exists."""
+        if path.startswith("bazel-") and ctx.attr.experimental_symlink_prefix:
+            return path.replace("bazel-", ctx.attr.experimental_symlink_prefix, 1)
+        return path
+
     ctx.actions.expand_template(
         output = script,
         is_executable = True,
@@ -121,8 +129,12 @@ def _expand_template_impl(ctx):
             "        {windows_default_include_paths}": "\n".join(["        %r," % path for path in find_cpp_toolchain(ctx).built_in_include_directories]),  # find_cpp_toolchain is from https://docs.bazel.build/versions/main/integrating-with-rules-cc.html
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
-            "{json_output_path}": repr(ctx.expand_make_variables("json_output_path_expansion", ctx.attr.json_output_path, {})), # Subject to make variable substitutions
+            "{json_output_path}": repr(ctx.expand_make_variables("json_output_path_expansion", ctx.attr.json_output_path, {
+                "BINDIR": _symlink_prefix_replacer(ctx.bin_dir.path),
+                "GENDIR": _symlink_prefix_replacer(ctx.genfiles_dir.path),
+            })),  # Subject to make variable substitutions
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
+            "{experimental_symlink_prefix}": repr(ctx.attr.experimental_symlink_prefix),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -132,6 +144,7 @@ _expand_template = rule(
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
+        "experimental_symlink_prefix": attr.string(),
         "json_output_path": attr.string(),
         "_script_template": attr.label(allow_single_file = True, default = "refresh.template.py"),
         "_print_args_executable": attr.label(executable = True, cfg = "target", default = "//:print_args"),
