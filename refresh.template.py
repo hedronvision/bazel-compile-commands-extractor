@@ -587,6 +587,9 @@ def _get_headers(compile_action, source_path: str):
 
     if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
         headers, should_cache = _get_headers_msvc(compile_action, source_path)
+    elif compile_action.arguments[0].endswith('ml.exe') or compile_action.arguments[0].endswith('ml64.exe'): # skip when compiling .S MASM files on Windows
+        headers = set()
+        should_cache = False
     else:
         headers, should_cache = _get_headers_gcc(compile_action, source_path, compile_action.actionKey)
 
