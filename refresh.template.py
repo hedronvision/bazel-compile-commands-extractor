@@ -617,7 +617,9 @@ def _get_files(compile_action):
 
     # First, we do the obvious thing: Filter args to those that look like source files.
     source_file_candidates = [arg for arg in compile_action.arguments if not arg.startswith('-') and arg.endswith(_get_files.source_extensions)]
-    assert source_file_candidates, f"No source files found in compile args: {compile_action.arguments}.\nPlease file an issue with this information!"
+    if len(source_file_candidates) == 0: # Header w/o source
+      return None
+
     source_file = source_file_candidates[0]
 
     # If we've got multiple candidates for source files, apply heuristics based on how Bazel tends to format commands.
@@ -1113,7 +1115,11 @@ def _get_cpp_command_for_files(compile_action):
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
 
-    source_files, header_files = _get_files(compile_action)
+    get_files_res = _get_files(compile_action)
+    if get_files_res is None:
+      return None
+
+    source_files, header_files = get_files_res
 
     # Done after getting files since we may execute NVCC to get the files.
     compile_action.arguments = _nvcc_patch(compile_action.arguments)
@@ -1149,7 +1155,12 @@ def _convert_compile_commands(aquery_output):
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
-    for source_files, header_files, compile_command_args in outputs:
+    for output in outputs:
+        if output is None:
+          continue
+
+        source_files, header_files, compile_command_args = output
+
         # Only emit one entry per header
         # This makes the output vastly smaller, since large size has been a problem for users.
         # e.g. https://github.com/insufficiently-caffeinated/caffeine/pull/577
