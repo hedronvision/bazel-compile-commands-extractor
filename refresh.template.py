@@ -37,6 +37,9 @@ import types
 import typing  # MIN_PY=3.9: Switch e.g. typing.List[str] -> List[str]
 
 
+# Header extensions according to clang:
+HEADER_EXTENSIONS = ('.h', '.hh', '.hpp', '.hxx', '.h++', '.H', '.HH', '.HP', '.HPP', '.H++', '.HXX', '.tcc')
+
 @enum.unique
 class SGR(enum.Enum):
     """Enumerate (some of the) available SGR (Select Graphic Rendition) control sequences."""
@@ -615,8 +618,17 @@ def _get_files(compile_action):
 
     # Getting the source file is a little trickier than it might seem.
 
+    # Check if this is a header compilation action (e.g., for header-only libraries).
+    # In this case, we treat the header as if it were a source file.
+    is_header_compilation = any(arg in ('-xc++-header', '-xc-header') for arg in compile_action.arguments)
+
     # First, we do the obvious thing: Filter args to those that look like source files.
     source_file_candidates = [arg for arg in compile_action.arguments if not arg.startswith('-') and arg.endswith(_get_files.source_extensions)]
+
+    # If no source files found and this is a header compilation, look for header files instead.
+    if not source_file_candidates and is_header_compilation:
+        source_file_candidates = [arg for arg in compile_action.arguments if not arg.startswith('-') and arg.endswith(HEADER_EXTENSIONS)]
+
     assert source_file_candidates, f"No source files found in compile args: {compile_action.arguments}.\nPlease file an issue with this information!"
     source_file = source_file_candidates[0]
 
@@ -644,7 +656,11 @@ def _get_files(compile_action):
             source_index = compile_action.arguments.index('/c') + 1
 
         source_file = compile_action.arguments[source_index]
-        assert source_file.endswith(_get_files.source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
+        # For header compilation, we expect header extensions; otherwise, source extensions.
+        if is_header_compilation:
+            assert source_file.endswith(HEADER_EXTENSIONS), f"Header file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
+        else:
+            assert source_file.endswith(_get_files.source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
 
     # Warn gently about missing files
     if not os.path.isfile(source_file):
@@ -665,6 +681,10 @@ def _get_files(compile_action):
     # Note: We need to apply commands to headers and sources.
     # Why? clangd currently tries to infer commands for headers using files with similar paths. This often works really poorly for header-only libraries. The commands should instead have been inferred from the source files using those libraries... See https://github.com/clangd/clangd/issues/123 for more.
     # When that issue is resolved, we can stop looking for headers and just return the single source file.
+
+    # For header compilation actions, the "source" is actually a header, so we don't need to find additional headers.
+    if is_header_compilation:
+        return {source_file}, set()
 
     # Assembly sources that are not preprocessed can't include headers
     if os.path.splitext(source_file)[1] in _get_files.assembly_source_extensions:
