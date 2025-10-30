@@ -64,6 +64,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        use_hermetic_python_workaround = False,
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -83,23 +84,44 @@ def refresh_compile_commands(
         target if target.startswith("/") or target.startswith("@") else "{}//{}:{}".format(native.repository_name(), native.package_name(), target.removeprefix(":")): flags for target, flags in targets.items()
     }
 
-    # Create a wrapper script that prints a helpful error message if the python version is too old, generated from check_python_version.template.py
-    version_checker_script_name = name + ".check_python_version.py"
-    _check_python_version(name = version_checker_script_name, to_run = name)
-
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
     _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
 
-    # Combine them so the wrapper calls the main script
-    native.py_binary(
-        name = name,
-        main = version_checker_script_name,
-        srcs = [version_checker_script_name, script_name],
-        data = ["@hedron_compile_commands//:print_args"],
-        imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
-        **kwargs
-    )
+    if use_hermetic_python_workaround:
+        # Use sh_binary wrapper to avoid hermetic Python toolchain issues
+        # This bypasses rules_python's template placeholder expansion which can fail
+        # with hermetic Python interpreters (e.g., @python3_12_host//:python)
+        wrapper_script_name = name + "_wrapper.sh"
+        _expand_wrapper_template(
+            name = wrapper_script_name,
+            main_script = script_name,
+            **kwargs
+        )
+        native.sh_binary(
+            name = name,
+            srcs = [wrapper_script_name],
+            data = [
+                script_name,
+                "@hedron_compile_commands//:print_args",
+            ],
+            **kwargs
+        )
+    else:
+        # Standard py_binary approach (default, backward compatible)
+        # Create a wrapper script that prints a helpful error message if the python version is too old
+        version_checker_script_name = name + ".check_python_version.py"
+        _check_python_version(name = version_checker_script_name, to_run = name)
+
+        # Combine them so the wrapper calls the main script
+        native.py_binary(
+            name = name,
+            main = version_checker_script_name,
+            srcs = [version_checker_script_name, script_name],
+            data = ["@hedron_compile_commands//:print_args"],
+            imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
+            **kwargs
+        )
 
 def _expand_template_impl(ctx):
     """Inject targets of interest--and other settings--into refresh.template.py, and set it up to be run."""
@@ -153,4 +175,28 @@ _check_python_version = rule(
         "_template": attr.label(allow_single_file = True, default = "check_python_version.template.py"),
     },
     implementation = _check_python_version_impl,
+)
+
+def _expand_wrapper_template_impl(ctx):
+    """Expand the bash wrapper template that will execute the Python script."""
+    script = ctx.actions.declare_file(ctx.attr.name)
+    ctx.actions.expand_template(
+        output = script,
+        is_executable = True,
+        template = ctx.file._wrapper_template,
+        substitutions = {
+            "{main_script}": ctx.attr.main_script,
+        },
+    )
+    return DefaultInfo(files = depset([script]))
+
+_expand_wrapper_template = rule(
+    attrs = {
+        "main_script": attr.string(mandatory = True),
+        "_wrapper_template": attr.label(
+            allow_single_file = True,
+            default = "refresh_wrapper.sh.template"
+        ),
+    },
+    implementation = _expand_wrapper_template_impl,
 )
