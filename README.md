@@ -233,6 +233,52 @@ On the other hand, if you've set things up and they're working well, we'd still 
 
 We'd also love to work with you on contributions and improvements, of course! Development setup is easy, not onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md) The codebase is super clean and friendly. Stepping into the code is a fun and efficient way to get the improvements you want.
 
+### Known Issue: Hermetic Python Toolchains
+
+**Problem:** Some projects use hermetic Python toolchains (via `rules_python`) that can cause placeholder expansion issues with this tool's `py_binary` implementation.
+
+**Symptoms:** When running `bazel run @hedron_compile_commands//:refresh_all`, you may see errors like:
+```
+python3: can't open file '%interpreter_args%': [Errno 2] No such file or directory
+```
+or
+```
+The current user is root, please run as non-root when using the hermetic Python interpreter
+```
+
+**Root Cause:** `rules_python` uses template placeholders (e.g., `%interpreter_args%`, `%stage2_bootstrap%`) in its `py_binary` wrapper scripts. These placeholders are meant to be expanded by Bazel's rules_python infrastructure. However, when projects specify custom hermetic Python interpreters (like `@python3_12_host//:python`), the placeholder expansion mechanism can fail, causing the wrapper script to pass literal placeholder strings to Python instead of expanded values.
+
+**Who's affected:** Projects using hermetic Python toolchains, particularly:
+- Large C++ projects with complex Python build requirements (e.g., Envoy proxy, TensorFlow)
+- Projects that specify custom Python interpreters in their WORKSPACE
+- Projects running builds in containerized environments with restricted Python access
+
+**Workaround:** If you encounter this issue, you have a few options:
+
+1. **Use system Python (simplest):** If your project can tolerate using system Python for development tooling, you can avoid hermetic Python for this tool while still using it for your main build. This is often acceptable since `compile_commands.json` generation is a development-time tool, not a production build artifact.
+
+2. **Manual sh_binary wrapper (for advanced users):** You can work around the issue by replacing `py_binary` with a `sh_binary` that wraps the Python script execution. This bypasses rules_python's templating system entirely. Here's a simplified example:
+
+   Create a wrapper script (`refresh_wrapper.sh`):
+   ```bash
+   #!/usr/bin/env bash
+   set -euo pipefail
+   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+   PYTHON="${PYTHON:-python3}"
+   exec $PYTHON "${SCRIPT_DIR}/refresh_all.py" "$@"
+   ```
+
+   Then modify your `refresh_compile_commands` rule to use `sh_binary` instead of `py_binary`. See [Envoy's implementation](https://github.com/envoyproxy/envoy) for a complete working example.
+
+3. **Fork and patch (most control):** If you need a permanent solution for your organization, consider maintaining a small fork with the sh_binary approach. The changes are minimal and localized to `refresh_compile_commands.bzl` and `BUILD`.
+
+**Related Issues:**
+- #165: ModuleNotFoundError with rules_python
+- #245: Root user error with hermetic Python
+- Background: This project previously used `rules_python` but [reverted due to compatibility issues](https://github.com/hedronvision/bazel-compile-commands-extractor/issues/168)
+
+**Future:** We're tracking potential solutions for better hermetic Python support. If you have ideas or would like to contribute a fix, please open an issue to discuss! We'd love to make this work seamlessly for everyone.
+
 ---
 
 ## Other Projects Likely Of Interest
