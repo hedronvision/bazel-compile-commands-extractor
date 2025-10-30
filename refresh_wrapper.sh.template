@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Wrapper script to run Hedron's Compile Commands extractor
+# This script bypasses rules_python's templating system to avoid
+# placeholder expansion issues with hermetic Python toolchains.
+
+set -euo pipefail
+
+# Find the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Get the base name of this wrapper script (e.g., "compdb_wrapper.sh" -> "compdb")
+WRAPPER_NAME="$(basename "${BASH_SOURCE[0]}")"
+BASE_NAME="${WRAPPER_NAME%_wrapper.sh}"
+
+# Runfiles directory (where Bazel puts data dependencies)
+# The wrapper script is named "<target>_wrapper.sh" but runfiles is "<target>.runfiles"
+RUNFILES_DIR="${SCRIPT_DIR}/${BASE_NAME}.runfiles"
+
+# If not found, try the standard Bazel pattern (script_name.runfiles)
+if [[ ! -d "${RUNFILES_DIR}" ]]; then
+    RUNFILES_DIR="${SCRIPT_DIR}.runfiles"
+fi
+
+# Python executable to use (from system PATH)
+PYTHON="${PYTHON:-python3}"
+
+# Verify Python version is 3.6+
+$PYTHON - <<'EOF'
+import sys
+if sys.version_info < (3, 6):
+    sys.exit("\n\033[31mFATAL ERROR:\033[0m Python 3.6 or later is required. Please update!")
+EOF
+
+# Set up environment for the Python script
+export RUNFILES_DIR
+export PATH="${RUNFILES_DIR}/hedron_compile_commands:${PATH}"
+
+# Find the Python script - it could be in different locations depending on the workspace
+PYTHON_SCRIPT=""
+if [[ -f "${RUNFILES_DIR}/envoy/{main_script}" ]]; then
+    PYTHON_SCRIPT="${RUNFILES_DIR}/envoy/{main_script}"
+elif [[ -f "${RUNFILES_DIR}/hedron_compile_commands/{main_script}" ]]; then
+    PYTHON_SCRIPT="${RUNFILES_DIR}/hedron_compile_commands/{main_script}"
+elif [[ -f "${RUNFILES_DIR}/_main/{main_script}" ]]; then
+    PYTHON_SCRIPT="${RUNFILES_DIR}/_main/{main_script}"
+else
+    echo "ERROR: Could not find Python script {main_script} in runfiles directory" >&2
+    echo "Searched in:" >&2
+    echo "  ${RUNFILES_DIR}/envoy/{main_script}" >&2
+    echo "  ${RUNFILES_DIR}/hedron_compile_commands/{main_script}" >&2
+    echo "  ${RUNFILES_DIR}/_main/{main_script}" >&2
+    exit 1
+fi
+
+# Execute the main Python script with all arguments passed through
+exec $PYTHON "$PYTHON_SCRIPT" "$@"

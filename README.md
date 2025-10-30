@@ -227,6 +227,34 @@ Everything should also work for generated files, though you may have to run a bu
 
 ## Rough Edges
 
+### Hermetic Python Toolchains
+
+**Problem:** If your project uses hermetic Python toolchains (via `rules_python`), you may encounter errors like:
+
+```
+python3: can't open file '%interpreter_args%': [Errno 2] No such file or directory
+```
+
+**Cause:** By default, this tool uses `py_binary` which relies on `rules_python`'s template placeholder expansion mechanism. When projects specify custom hermetic Python interpreters (e.g., `@python3_12_host//:python`), these placeholders (`%interpreter_args%`, `%stage2_bootstrap%`) may fail to expand correctly.
+
+**Solution:** Use the `use_hermetic_python_workaround` parameter to enable an alternative implementation using `sh_binary`:
+
+```Starlark
+refresh_compile_commands(
+    name = "refresh_compile_commands",
+    targets = {"//...": ""},
+    use_hermetic_python_workaround = True,  # Enable workaround for hermetic Python
+)
+```
+
+This workaround bypasses `rules_python`'s templating entirely by using a simple shell wrapper that directly invokes Python. The traditional `py_binary` approach remains the default for backward compatibility.
+
+**Who's affected:** Projects using hermetic Python toolchains, particularly large C++ projects with complex Python build requirements (e.g., Envoy, TensorFlow) or builds in containerized environments.
+
+**Related:** See issues #165, #245, #168 for more context.
+
+---
+
 Otherwise, we've self-filed issues for the rough edges we know about and are tracking. We'd love to hear from you there about what you're seeing, good and bad. Please add things if you find more rough edges, and let us know if you need help or more features.
 
 On the other hand, if you've set things up and they're working well, we'd still love to hear from you. Please file a "non-issue" in the issues tab describing your success! We'd love to hear what you're working on, what platforms you're using, and what you're finding most useful. And maybe also toss a star our way so we know it was helpful to you.

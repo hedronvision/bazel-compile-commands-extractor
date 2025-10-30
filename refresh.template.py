@@ -1422,3 +1422,7 @@ def main():
             indent=2, # Yay, human readability!
             check_circular=False # For speed.
         )
+
+
+if __name__ == "__main__":
+    main()
