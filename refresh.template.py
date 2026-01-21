@@ -557,6 +557,7 @@ def _get_headers(compile_action, source_path: str):
     Continuing gracefully...""")
 
     # Check for a fresh cache of headers
+    headers = None
     cached_headers = None
     if output_file:
         cache_file_path = output_file + ".hedron.compile-commands.headers" # Embed our cache in bazel's
@@ -583,25 +584,26 @@ def _get_headers(compile_action, source_path: str):
                 if (action_key == compile_action.actionKey
                     and _get_cached_adjusted_modified_time(source_path) <= cache_last_modified
                     and all(_get_cached_adjusted_modified_time(header_path) <= cache_last_modified for header_path in cached_headers)):
-                    return set(cached_headers)
+                    headers = set(cached_headers)
 
-    if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
-        headers, should_cache = _get_headers_msvc(compile_action, source_path)
-    else:
-        headers, should_cache = _get_headers_gcc(compile_action, source_path, compile_action.actionKey)
+    if headers is None:
+        if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
+            headers, should_cache = _get_headers_msvc(compile_action, source_path)
+        else:
+            headers, should_cache = _get_headers_gcc(compile_action, source_path, compile_action.actionKey)
 
-    # Cache for future use
-    if output_file and should_cache:
-        os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
-        with open(cache_file_path, 'w') as cache_file:
-            json.dump(
-                (compile_action.actionKey, list(headers)),
-                cache_file,
-                indent=2,
-                check_circular=False,
-            )
-    elif not headers and cached_headers: # If we failed to get headers, we'll fall back on a stale cache.
-        headers = set(cached_headers)
+        # Cache for future use
+        if output_file and should_cache:
+            os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
+            with open(cache_file_path, 'w') as cache_file:
+                json.dump(
+                    (compile_action.actionKey, list(headers)),
+                    cache_file,
+                    indent=2,
+                    check_circular=False,
+                )
+        elif not headers and cached_headers: # If we failed to get headers, we'll fall back on a stale cache.
+            headers = set(cached_headers)
 
     if {exclude_headers} == "external":
         headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
