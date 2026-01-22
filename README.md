@@ -68,6 +68,22 @@ Copy this into the top of your Bazel `WORKSPACE` file, making sure to update to 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 
+# Bazel 9+: py_binary/cc_binary are no longer native, so make sure rules_python and rules_cc are present.
+# If you already use these, you can omit this block.
+http_archive(
+    name = "rules_python",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/1.8.0/rules_python-1.8.0.tar.gz",
+    # Replace the version above with the latest release from https://github.com/bazelbuild/rules_python/releases.
+    # sha256 = "...",
+)
+http_archive(
+    name = "rules_cc",
+    url = "https://github.com/bazelbuild/rules_cc/releases/download/0.2.16/rules_cc-0.2.16.tar.gz",
+    # Replace the version above with the latest release from https://github.com/bazelbuild/rules_cc/releases.
+    # sha256 = "...",
+)
+
+
 # Hedron's Compile Commands Extractor for Bazel
 # https://github.com/hedronvision/bazel-compile-commands-extractor
 http_archive(
