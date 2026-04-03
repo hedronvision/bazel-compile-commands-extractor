@@ -52,12 +52,11 @@ refresh_compile_commands(
 ```
 """
 
-
 ########################################
 # Implementation
 
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
-
+load("@rules_python//python:py_binary.bzl", "py_binary")
 
 def refresh_compile_commands(
         name,
@@ -80,7 +79,8 @@ def refresh_compile_commands(
 
     # Make any package-relative labels absolute
     targets = {
-        target if target.startswith("/") or target.startswith("@") else "{}//{}:{}".format(native.repository_name(), native.package_name(), target.removeprefix(":")): flags for target, flags in targets.items()
+        target if target.startswith("/") or target.startswith("@") else "{}//{}:{}".format(native.repository_name(), native.package_name(), target.removeprefix(":")): flags
+        for target, flags in targets.items()
     }
 
     # Create a wrapper script that prints a helpful error message if the python version is too old, generated from check_python_version.template.py
@@ -92,12 +92,12 @@ def refresh_compile_commands(
     _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
 
     # Combine them so the wrapper calls the main script
-    native.py_binary(
+    py_binary(
         name = name,
         main = version_checker_script_name,
         srcs = [version_checker_script_name, script_name],
         data = ["@hedron_compile_commands//:print_args"],
-        imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
+        imports = [""],  # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
         **kwargs
     )
 
@@ -149,7 +149,7 @@ def _check_python_version_impl(ctx):
 
 _check_python_version = rule(
     attrs = {
-        "to_run": attr.string(mandatory = True), # Name of the python module (no .py) to import and call .main() on, should checks succeed.
+        "to_run": attr.string(mandatory = True),  # Name of the python module (no .py) to import and call .main() on, should checks succeed.
         "_template": attr.label(allow_single_file = True, default = "check_python_version.template.py"),
     },
     implementation = _check_python_version_impl,
