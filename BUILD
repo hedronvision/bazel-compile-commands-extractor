@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load(":refresh_compile_commands.bzl", "refresh_compile_commands")
 
 # See README.md for interface.
